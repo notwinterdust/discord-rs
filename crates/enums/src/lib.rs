@@ -5,12 +5,14 @@
 
 #![forbid(unsafe_code)]
 
+mod guild;
 mod intents;
 mod member_flags;
 mod permissions;
 mod public_user_flags;
 mod role_flags;
 
+pub use guild::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
 pub use intents::Intents;
 pub use member_flags::MemberFlags;
 pub use permissions::Permissions;

@@ -196,6 +196,21 @@ impl Asset {
         )
     }
 
+    /// Creates a guild image from a CDN path.
+    ///
+    /// `path` is the CDN collection, such as `banners`, `splashes` or
+    /// `discovery-splashes`.
+    #[must_use]
+    pub fn from_guild_image(guild_id: Snowflake, image_hash: &str, path: &str) -> Self {
+        let animated = image_hash.starts_with("a_");
+        let format = if animated { "gif" } else { "png" };
+        Self::new(
+            format!("{CDN_BASE}/{path}/{guild_id}/{image_hash}.{format}?size=1024"),
+            image_hash,
+            animated,
+        )
+    }
+
     /// Creates a role icon.
     #[must_use]
     pub fn from_role_icon(role_id: Snowflake, icon_hash: &str) -> Self {
