@@ -6,9 +6,13 @@
 #![forbid(unsafe_code)]
 
 mod intents;
+mod member_flags;
 mod permissions;
 mod public_user_flags;
+mod role_flags;
 
 pub use intents::Intents;
+pub use member_flags::MemberFlags;
 pub use permissions::Permissions;
 pub use public_user_flags::PublicUserFlags;
+pub use role_flags::RoleFlags;

@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn named_colours_match_discord_py() {
+    fn named_colours() {
         assert_eq!(Colour::DEFAULT.value(), 0);
         assert_eq!(Colour::BLURPLE.value(), 0x5865F2);
         assert_eq!(Colour::BRAND_GREEN.value(), 0x57F287);

@@ -1,5 +1,5 @@
 //! Discord CDN assets.
-//! This type only models the asset's location and metadata; 
+//! This type only models the asset's location and metadata;
 //! downloading the bytes belongs to the HTTP layer, which does not
 //! exist yet.
 
@@ -196,6 +196,16 @@ impl Asset {
         )
     }
 
+    /// Creates a role icon.
+    #[must_use]
+    pub fn from_role_icon(role_id: Snowflake, icon_hash: &str) -> Self {
+        Self::new(
+            format!("{CDN_BASE}/role-icons/{role_id}/{icon_hash}.png?size=1024"),
+            icon_hash,
+            false,
+        )
+    }
+
     /// Returns the underlying CDN URL.
     #[must_use]
     pub fn url(&self) -> &str {
@@ -352,7 +362,7 @@ mod tests {
     use crate::Snowflake;
 
     #[test]
-    fn avatar_urls_match_discord_py() {
+    fn avatar_urls() {
         let user_id = Snowflake::new(123456789012345678);
 
         let avatar = Asset::from_avatar(user_id, "abc123");

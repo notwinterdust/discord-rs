@@ -58,7 +58,7 @@ impl PublicUserFlags {
     /// Active Developer.
     pub const ACTIVE_DEVELOPER: Self = Self(1 << 22);
 
-    /// Every flag exposed by `discord.PublicUserFlags`.
+    /// Every public user flag.
     pub const ALL: Self = Self(
         Self::STAFF.0
             | Self::PARTNER.0
@@ -297,7 +297,7 @@ mod tests {
     use super::PublicUserFlags;
 
     #[test]
-    fn values_match_discord_py() {
+    fn flag_values() {
         assert_eq!(PublicUserFlags::STAFF.bits(), 1);
         assert_eq!(PublicUserFlags::HYPESQUAD_BRAVERY.bits(), 64);
         assert_eq!(PublicUserFlags::SYSTEM.bits(), 4096);

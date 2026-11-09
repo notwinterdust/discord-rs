@@ -360,7 +360,7 @@ mod tests {
     use super::Intents;
 
     #[test]
-    fn default_matches_discord_py() {
+    fn default_intents() {
         let default = Intents::default();
 
         assert!(default.guilds());

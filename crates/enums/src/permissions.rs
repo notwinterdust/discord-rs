@@ -226,6 +226,15 @@ impl Permissions {
         Self::ADMINISTRATOR
     }
 
+    /// The permissions that remain usable while a member is timed out.
+    ///
+    /// only viewing channels and
+    /// reading message history stay enabled.
+    #[must_use]
+    pub const fn timeout_mask() -> Self {
+        Self(Self::VIEW_CHANNEL.0 | Self::READ_MESSAGE_HISTORY.0)
+    }
+
     /// Returns the raw bitfield.
     #[must_use]
     pub const fn bits(self) -> u64 {
@@ -529,7 +538,7 @@ mod tests {
     use super::Permissions;
 
     #[test]
-    fn none_and_all_match_discord_py() {
+    fn none_and_all() {
         assert_eq!(Permissions::none(), Permissions::default());
         assert_eq!(Permissions::none().bits(), 0);
         assert_eq!(Permissions::all().bits(), 0x001F_7FFF_FFFF_FFFF);
@@ -538,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn factories_match_discord_py_masks() {
+    fn factory_masks() {
         assert_eq!(Permissions::all_channel().bits(), 0x001E_64FD_B3F7_FF51);
         assert_eq!(Permissions::general().bits(), 0x0000_0A00_7008_04B0);
         assert_eq!(Permissions::membership().bits(), 0x0000_0100_0C00_0007);
@@ -550,6 +559,10 @@ mod tests {
         assert_eq!(Permissions::apps().bits(), 0x0004_0080_8000_0000);
         assert_eq!(Permissions::events().bits(), 0x0000_1002_0000_0000);
         assert_eq!(Permissions::advanced(), Permissions::ADMINISTRATOR);
+        assert_eq!(
+            Permissions::timeout_mask(),
+            Permissions::VIEW_CHANNEL | Permissions::READ_MESSAGE_HISTORY
+        );
     }
 
     #[test]

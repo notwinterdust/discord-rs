@@ -12,8 +12,8 @@ pub const DISCORD_EPOCH_MS: u64 = 1_420_070_400_000;
 
 /// A Discord snowflake.
 ///
-/// This is the Rust equivalent of the `id` attribute exposed by
-/// `discord.abc.Snowflake`. Keeping it as a newtype, instead of a bare `u64`)
+/// Kept as a newtype instead of a bare `u64` so identifiers from different
+/// models cannot be mixed accidentally.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Snowflake(u64);
