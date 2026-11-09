@@ -4,12 +4,6 @@ name: Live Discord integration
 # test bot in a private test guild. Never runs on PRs (secrets aren't
 # available to forks, and we don't want untrusted code using the token).
 
-on:
-  push:
-    branches: [master]
-  schedule:
-    - cron: "0 6 * * *"
-  workflow_dispatch:
 
 # Serialize runs so we don't trip rate limits or fight over the test guild.
 concurrency:

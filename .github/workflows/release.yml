@@ -1,8 +1,5 @@
 name: Release
 
-on:
-  push:
-    branches: [master]
 
 jobs:
   # Publishes to crates.io + creates git tags/GitHub releases

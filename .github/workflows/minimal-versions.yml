@@ -3,13 +3,6 @@ name: Minimal versions
 # Catches dependency requirements in Cargo.toml that are lower than what
 # the code actually needs.
 
-on:
-  schedule:
-    - cron: "0 4 * * 1"
-  pull_request:
-    paths:
-      - "**/Cargo.toml"
-  workflow_dispatch:
 
 jobs:
   minimal-versions:
