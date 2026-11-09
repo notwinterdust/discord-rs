@@ -1,0 +1,24 @@
+name: Minimal versions
+
+# Catches dependency requirements in Cargo.toml that are lower than what
+# the code actually needs.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  pull_request:
+    paths:
+      - "**/Cargo.toml"
+  workflow_dispatch:
+
+jobs:
+  minimal-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libopus-dev cmake pkg-config
+      - run: cargo +nightly update -Z direct-minimal-versions
+      - run: cargo check --workspace --all-features
