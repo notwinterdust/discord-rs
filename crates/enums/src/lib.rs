@@ -7,6 +7,8 @@
 
 mod intents;
 mod permissions;
+mod public_user_flags;
 
 pub use intents::Intents;
 pub use permissions::Permissions;
+pub use public_user_flags::PublicUserFlags;

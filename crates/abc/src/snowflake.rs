@@ -73,7 +73,7 @@ impl Snowflake {
     /// Builds the snowflake for a timestamp in milliseconds since the Unix
     /// epoch, with the lower 22 bits set to zero.
     /// Returns `None` if `unix_ms` is before the Discord epoch. This is the
-    /// low end of the range 
+    /// low end of the range
     #[must_use]
     pub const fn from_timestamp_ms(unix_ms: u64) -> Option<Self> {
         match unix_ms.checked_sub(DISCORD_EPOCH_MS) {
@@ -85,7 +85,7 @@ impl Snowflake {
     /// Builds the snowflake for a timestamp in milliseconds since the Unix
     /// epoch, with the lower 22 bits set to all ones.
     /// Returns `None` if `unix_ms` is before the Discord epoch. This is the
-    /// high end of the range 
+    /// high end of the range
     #[must_use]
     pub const fn from_timestamp_ms_high(unix_ms: u64) -> Option<Self> {
         match unix_ms.checked_sub(DISCORD_EPOCH_MS) {

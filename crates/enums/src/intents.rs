@@ -6,7 +6,7 @@
 
 /// Wraps the Discord gateway intent bitfield.
 ///
-/// Individual flags can be queried and changed. In Rust this is expressed with 
+/// Individual flags can be queried and changed. In Rust this is expressed with
 /// associated constants plus accessor methods
 /// example :
 /// ```

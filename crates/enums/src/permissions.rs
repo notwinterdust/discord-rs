@@ -1,4 +1,4 @@
-//! Discord permission bitfields. 
+//! Discord permission bitfields.
 //! The raw value is a 53-bit flag array. As
 //! with [`Intents`](crate::Intents), flags can be inspected and changed
 //! individually, and the usual bitwise operators are implemented.
