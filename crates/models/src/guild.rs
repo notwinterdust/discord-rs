@@ -9,10 +9,11 @@ use std::time::SystemTime;
 
 use abc::{Asset, Colour, HasId, Snowflake};
 use enums::{
-    ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, Permissions, VerificationLevel,
+    ChannelType, ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, Permissions,
+    VerificationLevel,
 };
 
-use crate::{Member, Role};
+use crate::{GuildChannel, Member, Role};
 
 /// Represents a Discord guild (server).
 ///
@@ -39,6 +40,8 @@ pub struct Guild {
     pub roles: Vec<Role>,
     /// The guild's cached members.
     pub members: Vec<Member>,
+    /// The guild's cached channels.
+    pub channels: Vec<GuildChannel>,
     /// The number of members in the guild, if known.
     pub member_count: Option<u64>,
     /// Whether the guild is unavailable.
@@ -109,6 +112,7 @@ impl Default for Guild {
             owner_id: None,
             roles: Vec::new(),
             members: Vec::new(),
+            channels: Vec::new(),
             member_count: None,
             unavailable: false,
             verification_level: VerificationLevel::default(),
@@ -219,6 +223,18 @@ impl Guild {
             }
         }
         self.members = members;
+        self
+    }
+
+    /// Sets the guild's cached channels.
+    ///
+    /// Each channel's guild ID is updated to match this guild.
+    #[must_use]
+    pub fn with_channels(mut self, mut channels: Vec<GuildChannel>) -> Self {
+        for channel in &mut channels {
+            channel.guild_id = self.id;
+        }
+        self.channels = channels;
         self
     }
 
@@ -466,6 +482,104 @@ impl Guild {
         &self.members
     }
 
+    /// Returns the guild's cached channels.
+    #[must_use]
+    pub fn channels(&self) -> &[GuildChannel] {
+        &self.channels
+    }
+
+    /// Returns the channel with the given ID, if it is cached.
+    #[must_use]
+    pub fn get_channel(&self, channel_id: impl Into<Snowflake>) -> Option<&GuildChannel> {
+        let channel_id = channel_id.into();
+        self.channels
+            .iter()
+            .find(|channel| channel.id == channel_id)
+    }
+
+    /// Returns every cached channel of the given type.
+    pub fn channels_of_type(
+        &self,
+        channel_type: ChannelType,
+    ) -> impl Iterator<Item = &GuildChannel> {
+        self.channels
+            .iter()
+            .filter(move |channel| channel.channel_type == channel_type)
+    }
+
+    /// Returns every cached text channel.
+    pub fn text_channels(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::Text)
+    }
+
+    /// Returns every cached announcement channel.
+    pub fn news_channels(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::News)
+    }
+
+    /// Returns every cached voice channel.
+    pub fn voice_channels(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::Voice)
+    }
+
+    /// Returns every cached stage voice channel.
+    pub fn stage_channels(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::StageVoice)
+    }
+
+    /// Returns every cached forum channel.
+    pub fn forum_channels(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::Forum)
+    }
+
+    /// Returns every cached media channel.
+    pub fn media_channels(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::Media)
+    }
+
+    /// Returns every cached channel category.
+    pub fn categories(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels_of_type(ChannelType::Category)
+    }
+
+    /// Returns the guild's AFK channel, if it is cached.
+    #[must_use]
+    pub fn afk_channel(&self) -> Option<&GuildChannel> {
+        self.afk_channel_id.and_then(|id| self.get_channel(id))
+    }
+
+    /// Returns the guild's system channel, if it is cached.
+    #[must_use]
+    pub fn system_channel(&self) -> Option<&GuildChannel> {
+        self.system_channel_id.and_then(|id| self.get_channel(id))
+    }
+
+    /// Returns the guild's rules channel, if it is cached.
+    #[must_use]
+    pub fn rules_channel(&self) -> Option<&GuildChannel> {
+        self.rules_channel_id.and_then(|id| self.get_channel(id))
+    }
+
+    /// Returns the guild's public updates channel, if it is cached.
+    #[must_use]
+    pub fn public_updates_channel(&self) -> Option<&GuildChannel> {
+        self.public_updates_channel_id
+            .and_then(|id| self.get_channel(id))
+    }
+
+    /// Returns the guild's safety alerts channel, if it is cached.
+    #[must_use]
+    pub fn safety_alerts_channel(&self) -> Option<&GuildChannel> {
+        self.safety_alerts_channel_id
+            .and_then(|id| self.get_channel(id))
+    }
+
+    /// Returns the guild's widget channel, if it is cached.
+    #[must_use]
+    pub fn widget_channel(&self) -> Option<&GuildChannel> {
+        self.widget_channel_id.and_then(|id| self.get_channel(id))
+    }
+
     /// Returns the member with the given user ID, if they are cached.
     #[must_use]
     pub fn get_member(&self, user_id: impl Into<Snowflake>) -> Option<&Member> {
@@ -599,10 +713,10 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use abc::{HasId, Snowflake};
-    use enums::{Permissions, VerificationLevel};
+    use enums::{ChannelType, Permissions, VerificationLevel};
 
     use super::Guild;
-    use crate::{Member, Role, RoleTags, User};
+    use crate::{GuildChannel, Member, Role, RoleTags, User};
 
     fn sample_role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
         Role::new(guild_id, id, name).with_position(position)
@@ -639,6 +753,7 @@ mod tests {
         assert_eq!(guild.verification_level, VerificationLevel::None);
         assert!(guild.roles().is_empty());
         assert!(guild.members().is_empty());
+        assert!(guild.channels().is_empty());
         assert_eq!(guild.owner(), None);
         assert_eq!(guild.default_role(), None);
         assert_eq!(guild.is_large(), None);
@@ -826,5 +941,62 @@ mod tests {
         assert!(guild.widget_enabled);
         assert_eq!(guild.widget_channel_id, Some(Snowflake::new(3)));
         assert!(guild.unavailable);
+    }
+
+    #[test]
+    fn cached_channels_are_queryable() {
+        let guild = Guild::new(100_u64, "Test")
+            .with_afk_channel_id(2_u64)
+            .with_system_channel_id(3_u64)
+            .with_widget_channel_id(3_u64)
+            .with_channels(vec![
+                GuildChannel::new(1_u64, 1_u64, "Category", ChannelType::Category),
+                GuildChannel::new(2_u64, 1_u64, "Voice", ChannelType::Voice),
+                GuildChannel::new(3_u64, 1_u64, "General", ChannelType::Text),
+                GuildChannel::new(4_u64, 1_u64, "News", ChannelType::News),
+                GuildChannel::new(5_u64, 1_u64, "Stage", ChannelType::StageVoice),
+                GuildChannel::new(6_u64, 1_u64, "Forum", ChannelType::Forum),
+                GuildChannel::new(7_u64, 1_u64, "Media", ChannelType::Media),
+            ]);
+
+        assert_eq!(guild.channels().len(), 7);
+        assert!(
+            guild
+                .channels()
+                .iter()
+                .all(|channel| channel.guild_id == guild.id)
+        );
+        assert_eq!(
+            guild
+                .get_channel(3_u64)
+                .map(|channel| channel.name.as_str()),
+            Some("General")
+        );
+        assert!(guild.get_channel(99_u64).is_none());
+
+        assert_eq!(guild.categories().count(), 1);
+        assert_eq!(guild.text_channels().count(), 1);
+        assert_eq!(guild.news_channels().count(), 1);
+        assert_eq!(guild.voice_channels().count(), 1);
+        assert_eq!(guild.stage_channels().count(), 1);
+        assert_eq!(guild.forum_channels().count(), 1);
+        assert_eq!(guild.media_channels().count(), 1);
+        assert_eq!(guild.channels_of_type(ChannelType::Category).count(), 1);
+
+        assert_eq!(
+            guild.afk_channel().map(|channel| channel.name.as_str()),
+            Some("Voice")
+        );
+        assert_eq!(
+            guild.system_channel().map(|channel| channel.name.as_str()),
+            Some("General")
+        );
+        assert_eq!(
+            guild.widget_channel().map(|channel| channel.name.as_str()),
+            Some("General")
+        );
+        assert!(guild.rules_channel().is_none());
+        assert!(guild.public_updates_channel().is_none());
+        assert!(guild.safety_alerts_channel().is_none());
     }
 }

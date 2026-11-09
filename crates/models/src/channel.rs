@@ -1,0 +1,1186 @@
+//! Guild channels and channel permission overwrites.
+//!
+//! A [`GuildChannel`] is a unified representation of Discord's guild channel
+//! types. Fields that only apply to some channel types are still present; the
+//! classification helpers indicate which fields are meaningful.
+
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::time::SystemTime;
+
+use abc::{HasId, Snowflake};
+use enums::{
+    ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, Permissions, VideoQualityMode,
+};
+
+use crate::{Guild, Member, Role};
+
+/// The target kind of a channel permission overwrite.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum PermissionOverwriteType {
+    /// The overwrite applies to a role.
+    #[default]
+    Role = 0,
+    /// The overwrite applies to a guild member.
+    Member = 1,
+}
+
+impl PermissionOverwriteType {
+    /// Returns the raw API value.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
+
+    /// Converts a raw API value, returning `None` for unknown values.
+    #[must_use]
+    pub const fn from_value(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Role),
+            1 => Some(Self::Member),
+            _ => None,
+        }
+    }
+
+    /// Returns the lowercase name used by the API.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Role => "role",
+            Self::Member => "member",
+        }
+    }
+}
+
+impl fmt::Display for PermissionOverwriteType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A channel-specific allow/deny permission pair.
+///
+/// Unlike [`Permissions`], a permission in an overwrite has three states:
+/// explicitly allowed, explicitly denied, or inherited. The inherited state is
+/// represented by `None` when using [`PermissionOverwrite::get`] and
+/// [`PermissionOverwrite::set`].
+///
+/// ```
+///     use enums::Permissions;
+///     use models::PermissionOverwrite;
+///
+///     let mut overwrite = PermissionOverwrite::new();
+///     overwrite.set(Permissions::VIEW_CHANNEL, Some(true));
+///     overwrite.set(Permissions::SEND_MESSAGES, Some(false));
+///
+///     assert_eq!(overwrite.get(Permissions::VIEW_CHANNEL), Some(true));
+///     assert_eq!(overwrite.get(Permissions::SEND_MESSAGES), Some(false));
+///     assert_eq!(overwrite.get(Permissions::MANAGE_GUILD), None);
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct PermissionOverwrite {
+    allow: Permissions,
+    deny: Permissions,
+}
+
+impl PermissionOverwrite {
+    /// Creates an overwrite that allows and denies nothing.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            allow: Permissions::none(),
+            deny: Permissions::none(),
+        }
+    }
+
+    /// Creates an overwrite from an explicit allow and deny pair.
+    ///
+    /// Callers are expected to keep the two sets disjoint. Use
+    /// [`PermissionOverwrite::set`] to set individual permissions with the
+    /// correct precedence.
+    #[must_use]
+    pub const fn from_pair(allow: Permissions, deny: Permissions) -> Self {
+        Self { allow, deny }
+    }
+
+    /// Returns the explicitly allowed permissions.
+    #[must_use]
+    pub const fn allow(&self) -> Permissions {
+        self.allow
+    }
+
+    /// Returns the explicitly denied permissions.
+    #[must_use]
+    pub const fn deny(&self) -> Permissions {
+        self.deny
+    }
+
+    /// Returns the `(allow, deny)` pair.
+    #[must_use]
+    pub const fn pair(&self) -> (Permissions, Permissions) {
+        (self.allow, self.deny)
+    }
+
+    /// Returns whether the overwrite neither allows nor denies anything.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.allow.is_empty() && self.deny.is_empty()
+    }
+
+    /// Returns the state of a permission, or `None` if it is inherited.
+    ///
+    /// `permission` should normally contain a single flag. For a multi-flag
+    /// mask, `Some(true)` and `Some(false)` are only returned when every bit in
+    /// the mask has the same explicit state.
+    #[must_use]
+    pub fn get(&self, permission: Permissions) -> Option<bool> {
+        if permission.is_empty() {
+            return None;
+        }
+
+        if self.allow.intersection(permission) == permission {
+            Some(true)
+        } else if self.deny.intersection(permission) == permission {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    /// Explicitly allows, explicitly denies, or inherits a permission.
+    pub fn set(&mut self, permission: Permissions, value: Option<bool>) {
+        match value {
+            Some(true) => {
+                self.deny.remove(permission);
+                self.allow.insert(permission);
+            }
+            Some(false) => {
+                self.allow.remove(permission);
+                self.deny.insert(permission);
+            }
+            None => {
+                self.allow.remove(permission);
+                self.deny.remove(permission);
+            }
+        }
+    }
+
+    /// Explicitly allows every permission in `permissions`.
+    pub fn allow_all(&mut self, permissions: Permissions) {
+        self.deny.remove(permissions);
+        self.allow.insert(permissions);
+    }
+
+    /// Explicitly denies every permission in `permissions`.
+    pub fn deny_all(&mut self, permissions: Permissions) {
+        self.allow.remove(permissions);
+        self.deny.insert(permissions);
+    }
+
+    /// Removes every explicit state from `permissions`.
+    pub fn clear(&mut self, permissions: Permissions) {
+        self.allow.remove(permissions);
+        self.deny.remove(permissions);
+    }
+}
+
+impl From<(Permissions, Permissions)> for PermissionOverwrite {
+    fn from((allow, deny): (Permissions, Permissions)) -> Self {
+        Self::from_pair(allow, deny)
+    }
+}
+
+impl From<PermissionOverwrite> for (Permissions, Permissions) {
+    fn from(overwrite: PermissionOverwrite) -> Self {
+        overwrite.pair()
+    }
+}
+
+/// A single entry in a channel's permission overwrite list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PermissionOverwriteEntry {
+    /// The role or member ID this entry applies to.
+    pub target_id: Snowflake,
+    /// Whether the target is a role or a member.
+    pub kind: PermissionOverwriteType,
+    /// The allow/deny pair.
+    pub overwrite: PermissionOverwrite,
+}
+
+impl PermissionOverwriteEntry {
+    /// Creates an overwrite entry for a role or member.
+    #[must_use]
+    pub const fn new(
+        target_id: Snowflake,
+        kind: PermissionOverwriteType,
+        overwrite: PermissionOverwrite,
+    ) -> Self {
+        Self {
+            target_id,
+            kind,
+            overwrite,
+        }
+    }
+
+    /// Creates an overwrite entry for a role.
+    #[must_use]
+    pub const fn role(target_id: Snowflake, overwrite: PermissionOverwrite) -> Self {
+        Self::new(target_id, PermissionOverwriteType::Role, overwrite)
+    }
+
+    /// Creates an overwrite entry for a member.
+    #[must_use]
+    pub const fn member(target_id: Snowflake, overwrite: PermissionOverwrite) -> Self {
+        Self::new(target_id, PermissionOverwriteType::Member, overwrite)
+    }
+
+    /// Returns whether this entry applies to the given target.
+    #[must_use]
+    pub fn matches(&self, target_id: Snowflake, kind: PermissionOverwriteType) -> bool {
+        self.target_id == target_id && self.kind == kind
+    }
+
+    /// Returns whether this entry applies to a role.
+    #[must_use]
+    pub const fn is_role(&self) -> bool {
+        matches!(self.kind, PermissionOverwriteType::Role)
+    }
+
+    /// Returns whether this entry applies to a member.
+    #[must_use]
+    pub const fn is_member(&self) -> bool {
+        matches!(self.kind, PermissionOverwriteType::Member)
+    }
+}
+
+/// A guild channel.
+///
+/// This is a unified model for text, voice, category, announcement, stage,
+/// forum and media channels. Fields that do not apply to the channel's
+/// [`ChannelType`] keep their defaults.
+///
+/// Equality and hashing are based on the channel's ID.
+#[derive(Clone, Debug)]
+pub struct GuildChannel {
+    /// The channel's unique ID.
+    pub id: Snowflake,
+    /// The ID of the guild that owns the channel.
+    pub guild_id: Snowflake,
+    /// The channel's name.
+    pub name: String,
+    /// The channel's type.
+    pub channel_type: ChannelType,
+    /// The channel's position in the guild's channel list.
+    pub position: i64,
+    /// The ID of the category this channel belongs to, if any.
+    pub category_id: Option<Snowflake>,
+    /// The channel's permission overwrites.
+    pub permission_overwrites: Vec<PermissionOverwriteEntry>,
+    /// Whether the channel is age-restricted.
+    pub nsfw: bool,
+    /// The channel's flags.
+    pub flags: ChannelFlags,
+    /// The text channel's topic or the forum's guidelines.
+    pub topic: Option<String>,
+    /// The number of seconds members must wait between messages.
+    pub slowmode_delay: u64,
+    /// The default auto-archive duration for threads, in minutes.
+    pub default_auto_archive_duration: u64,
+    /// The default slowmode delay for threads, in seconds.
+    pub default_thread_slowmode_delay: u64,
+    /// The last message or thread ID, if known.
+    pub last_message_id: Option<Snowflake>,
+    /// The voice channel's bitrate, in bits per second.
+    pub bitrate: u64,
+    /// The voice channel's user limit, where `0` means unlimited.
+    pub user_limit: u64,
+    /// The voice channel's RTC region, or `None` for automatic selection.
+    pub rtc_region: Option<String>,
+    /// The voice channel's camera video quality.
+    pub video_quality_mode: VideoQualityMode,
+    /// The voice channel's status, if any.
+    pub status: Option<String>,
+    /// The forum's default layout.
+    pub default_layout: ForumLayout,
+    /// The forum's default sort order.
+    pub default_sort_order: ForumSortOrder,
+}
+
+impl Default for GuildChannel {
+    fn default() -> Self {
+        Self {
+            id: Snowflake::ZERO,
+            guild_id: Snowflake::ZERO,
+            name: String::new(),
+            channel_type: ChannelType::default(),
+            position: 0,
+            category_id: None,
+            permission_overwrites: Vec::new(),
+            nsfw: false,
+            flags: ChannelFlags::default(),
+            topic: None,
+            slowmode_delay: 0,
+            default_auto_archive_duration: 1440,
+            default_thread_slowmode_delay: 0,
+            last_message_id: None,
+            bitrate: 64_000,
+            user_limit: 0,
+            rtc_region: None,
+            video_quality_mode: VideoQualityMode::default(),
+            status: None,
+            default_layout: ForumLayout::default(),
+            default_sort_order: ForumSortOrder::default(),
+        }
+    }
+}
+
+impl GuildChannel {
+    /// Creates a guild channel with the fields Discord always provides.
+    #[must_use]
+    pub fn new(
+        id: impl Into<Snowflake>,
+        guild_id: impl Into<Snowflake>,
+        name: impl Into<String>,
+        channel_type: ChannelType,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            guild_id: guild_id.into(),
+            name: name.into(),
+            channel_type,
+            ..Self::default()
+        }
+    }
+
+    /// Sets the channel's position.
+    #[must_use]
+    pub fn with_position(mut self, position: i64) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Sets the ID of the category this channel belongs to.
+    #[must_use]
+    pub fn with_category_id(mut self, category_id: impl Into<Snowflake>) -> Self {
+        self.category_id = Some(category_id.into());
+        self
+    }
+
+    /// Sets the channel's permission overwrites.
+    #[must_use]
+    pub fn with_permission_overwrites(mut self, overwrites: Vec<PermissionOverwriteEntry>) -> Self {
+        self.permission_overwrites = overwrites;
+        self
+    }
+
+    /// Marks the channel as age-restricted.
+    #[must_use]
+    pub fn with_nsfw(mut self, nsfw: bool) -> Self {
+        self.nsfw = nsfw;
+        self
+    }
+
+    /// Sets the channel's flags.
+    #[must_use]
+    pub fn with_flags(mut self, flags: ChannelFlags) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    /// Sets the channel's topic or forum guidelines.
+    #[must_use]
+    pub fn with_topic(mut self, topic: impl Into<String>) -> Self {
+        self.topic = Some(topic.into());
+        self
+    }
+
+    /// Sets the channel's slowmode delay in seconds.
+    #[must_use]
+    pub fn with_slowmode_delay(mut self, seconds: u64) -> Self {
+        self.slowmode_delay = seconds;
+        self
+    }
+
+    /// Sets the default thread auto-archive duration in minutes.
+    #[must_use]
+    pub fn with_default_auto_archive_duration(mut self, minutes: u64) -> Self {
+        self.default_auto_archive_duration = minutes;
+        self
+    }
+
+    /// Sets the default thread slowmode delay in seconds.
+    #[must_use]
+    pub fn with_default_thread_slowmode_delay(mut self, seconds: u64) -> Self {
+        self.default_thread_slowmode_delay = seconds;
+        self
+    }
+
+    /// Sets the last known message or thread ID.
+    #[must_use]
+    pub fn with_last_message_id(mut self, message_id: impl Into<Snowflake>) -> Self {
+        self.last_message_id = Some(message_id.into());
+        self
+    }
+
+    /// Sets the voice channel bitrate.
+    #[must_use]
+    pub fn with_bitrate(mut self, bitrate: u64) -> Self {
+        self.bitrate = bitrate;
+        self
+    }
+
+    /// Sets the voice channel user limit.
+    #[must_use]
+    pub fn with_user_limit(mut self, user_limit: u64) -> Self {
+        self.user_limit = user_limit;
+        self
+    }
+
+    /// Sets the voice channel RTC region.
+    #[must_use]
+    pub fn with_rtc_region(mut self, region: impl Into<String>) -> Self {
+        self.rtc_region = Some(region.into());
+        self
+    }
+
+    /// Sets the voice channel camera video quality.
+    #[must_use]
+    pub fn with_video_quality_mode(mut self, mode: VideoQualityMode) -> Self {
+        self.video_quality_mode = mode;
+        self
+    }
+
+    /// Sets the voice channel status.
+    #[must_use]
+    pub fn with_status(mut self, status: impl Into<String>) -> Self {
+        self.status = Some(status.into());
+        self
+    }
+
+    /// Sets the forum's default layout.
+    #[must_use]
+    pub fn with_default_layout(mut self, layout: ForumLayout) -> Self {
+        self.default_layout = layout;
+        self
+    }
+
+    /// Sets the forum's default sort order.
+    #[must_use]
+    pub fn with_default_sort_order(mut self, order: ForumSortOrder) -> Self {
+        self.default_sort_order = order;
+        self
+    }
+
+    /// Returns the channel's type.
+    #[must_use]
+    pub const fn channel_type(&self) -> ChannelType {
+        self.channel_type
+    }
+
+    /// Returns `true` if the channel is a text channel.
+    #[must_use]
+    pub const fn is_text(&self) -> bool {
+        matches!(self.channel_type, ChannelType::Text)
+    }
+
+    /// Returns `true` if the channel is an announcement channel.
+    #[must_use]
+    pub const fn is_news(&self) -> bool {
+        matches!(self.channel_type, ChannelType::News)
+    }
+
+    /// Returns `true` if the channel is a voice channel.
+    #[must_use]
+    pub const fn is_voice(&self) -> bool {
+        matches!(self.channel_type, ChannelType::Voice)
+    }
+
+    /// Returns `true` if the channel is a stage voice channel.
+    #[must_use]
+    pub const fn is_stage_voice(&self) -> bool {
+        matches!(self.channel_type, ChannelType::StageVoice)
+    }
+
+    /// Returns `true` if the channel is a category.
+    #[must_use]
+    pub const fn is_category(&self) -> bool {
+        matches!(self.channel_type, ChannelType::Category)
+    }
+
+    /// Returns `true` if the channel is a forum channel.
+    #[must_use]
+    pub const fn is_forum(&self) -> bool {
+        matches!(self.channel_type, ChannelType::Forum)
+    }
+
+    /// Returns `true` if the channel is a media channel.
+    #[must_use]
+    pub const fn is_media(&self) -> bool {
+        matches!(self.channel_type, ChannelType::Media)
+    }
+
+    /// Returns `true` if the channel is a thread.
+    #[must_use]
+    pub const fn is_thread(&self) -> bool {
+        self.channel_type.is_thread()
+    }
+
+    /// Returns `true` if the channel is age-restricted.
+    #[must_use]
+    pub const fn is_nsfw(&self) -> bool {
+        self.nsfw
+    }
+
+    /// Returns the string that mentions the channel.
+    #[must_use]
+    pub fn mention(&self) -> String {
+        format!("<#{}>", self.id)
+    }
+
+    /// Returns a URL that opens the channel in Discord.
+    #[must_use]
+    pub fn jump_url(&self) -> String {
+        format!("https://discord.com/channels/{}/{}", self.guild_id, self.id)
+    }
+
+    /// Returns the channel's creation time.
+    #[must_use]
+    pub fn created_at(&self) -> SystemTime {
+        self.id.created_at()
+    }
+
+    /// Returns the channel's permission overwrites.
+    #[must_use]
+    pub fn overwrites(&self) -> &[PermissionOverwriteEntry] {
+        &self.permission_overwrites
+    }
+
+    /// Returns the overwrite for a specific target, if one exists.
+    #[must_use]
+    pub fn overwrite(
+        &self,
+        target_id: impl Into<Snowflake>,
+        kind: PermissionOverwriteType,
+    ) -> Option<&PermissionOverwriteEntry> {
+        let target_id = target_id.into();
+        self.permission_overwrites
+            .iter()
+            .find(|entry| entry.matches(target_id, kind))
+    }
+
+    /// Returns the overwrite for a role, if one exists.
+    #[must_use]
+    pub fn overwrite_for_role(
+        &self,
+        role_id: impl Into<Snowflake>,
+    ) -> Option<&PermissionOverwriteEntry> {
+        self.overwrite(role_id, PermissionOverwriteType::Role)
+    }
+
+    /// Returns the overwrite for a member, if one exists.
+    #[must_use]
+    pub fn overwrite_for_member(
+        &self,
+        user_id: impl Into<Snowflake>,
+    ) -> Option<&PermissionOverwriteEntry> {
+        self.overwrite(user_id, PermissionOverwriteType::Member)
+    }
+
+    /// Adds or replaces an overwrite entry.
+    ///
+    /// If an entry for the same target and kind already exists, it is replaced.
+    pub fn set_overwrite(&mut self, entry: PermissionOverwriteEntry) {
+        if let Some(existing) = self
+            .permission_overwrites
+            .iter_mut()
+            .find(|existing| existing.matches(entry.target_id, entry.kind))
+        {
+            *existing = entry;
+        } else {
+            self.permission_overwrites.push(entry);
+        }
+    }
+
+    /// Removes the overwrite for a target, returning it if it existed.
+    pub fn remove_overwrite(
+        &mut self,
+        target_id: impl Into<Snowflake>,
+        kind: PermissionOverwriteType,
+    ) -> Option<PermissionOverwriteEntry> {
+        let target_id = target_id.into();
+        let index = self
+            .permission_overwrites
+            .iter()
+            .position(|entry| entry.matches(target_id, kind))?;
+        Some(self.permission_overwrites.remove(index))
+    }
+
+    /// Returns the category this channel belongs to, if it is cached.
+    #[must_use]
+    pub fn category<'a>(&self, guild: &'a Guild) -> Option<&'a GuildChannel> {
+        self.category_id
+            .and_then(|category_id| guild.get_channel(category_id))
+            .filter(|channel| channel.is_category())
+    }
+
+    /// Returns whether this channel's overwrites match its category's.
+    ///
+    /// Returns `false` if the channel has no category or the category is not
+    /// cached.
+    #[must_use]
+    pub fn permissions_synced(&self, guild: &Guild) -> bool {
+        let Some(category) = self.category(guild) else {
+            return false;
+        };
+
+        self.same_overwrites(&category.permission_overwrites)
+    }
+
+    /// Resolves the permissions a role would have in this channel.
+    #[must_use]
+    pub fn permissions_for_role(&self, guild: &Guild, role: &Role) -> Permissions {
+        let mut base = self.base_permissions_for_role(guild, role);
+
+        if base.administrator() {
+            base = Permissions::all();
+        } else {
+            if let Some(entry) = self.overwrite_for_role(guild.id) {
+                base = apply_overwrite(base, &entry.overwrite);
+            }
+
+            if !role.is_default()
+                && let Some(entry) = self.overwrite_for_role(role.id)
+            {
+                base = apply_overwrite(base, &entry.overwrite);
+            }
+        }
+
+        self.apply_channel_type_permissions(base)
+    }
+
+    /// Resolves the permissions a member would have in this channel.
+    #[must_use]
+    pub fn permissions_for(&self, guild: &Guild, member: &Member) -> Permissions {
+        let mut base = self.base_permissions_for_member(guild, member);
+
+        if guild.is_owner(member.id()) || base.administrator() {
+            base = Permissions::all();
+        } else {
+            if let Some(entry) = self.overwrite_for_role(guild.id) {
+                base = apply_overwrite(base, &entry.overwrite);
+            }
+
+            let mut allows = Permissions::none();
+            let mut denies = Permissions::none();
+
+            for entry in &self.permission_overwrites {
+                if !entry.is_role() || entry.target_id == guild.id {
+                    continue;
+                }
+
+                if member.roles().iter().any(|role| role.id == entry.target_id) {
+                    allows.insert(entry.overwrite.allow());
+                    denies.insert(entry.overwrite.deny());
+                }
+            }
+
+            base = apply_overwrite_pair(base, allows, denies);
+
+            if let Some(entry) = self.overwrite_for_member(member.id()) {
+                base = apply_overwrite(base, &entry.overwrite);
+            }
+
+            if member.is_timed_out() {
+                base = base.intersection(Permissions::timeout_mask());
+            }
+        }
+
+        self.apply_channel_type_permissions(base)
+    }
+
+    fn base_permissions_for_role(&self, guild: &Guild, role: &Role) -> Permissions {
+        let Some(default_role) = guild.default_role() else {
+            return Permissions::none();
+        };
+
+        default_role.permissions().union(role.permissions())
+    }
+
+    fn base_permissions_for_member(&self, guild: &Guild, member: &Member) -> Permissions {
+        let Some(default_role) = guild.default_role() else {
+            return Permissions::none();
+        };
+
+        let mut base = default_role.permissions();
+        for role in guild.roles_for(member) {
+            base.insert(role.permissions());
+        }
+        base
+    }
+
+    fn apply_channel_type_permissions(&self, base: Permissions) -> Permissions {
+        let mut base = base;
+
+        if self.channel_type.is_textual() {
+            base = apply_implicit_permissions(base);
+            return base.difference(Permissions::voice());
+        }
+
+        if self.is_voice() || self.is_stage_voice() {
+            base = apply_implicit_permissions(base);
+            if !base.connect() {
+                let denied = Permissions::voice()
+                    .union(Permissions::MANAGE_CHANNELS)
+                    .union(Permissions::MANAGE_ROLES);
+                base = base.difference(denied);
+            }
+        }
+
+        base
+    }
+
+    fn same_overwrites(&self, other: &[PermissionOverwriteEntry]) -> bool {
+        if self.permission_overwrites.len() != other.len() {
+            return false;
+        }
+
+        self.permission_overwrites
+            .iter()
+            .all(|entry| other.iter().any(|candidate| candidate == entry))
+    }
+}
+
+fn apply_overwrite(base: Permissions, overwrite: &PermissionOverwrite) -> Permissions {
+    apply_overwrite_pair(base, overwrite.allow(), overwrite.deny())
+}
+
+fn apply_overwrite_pair(base: Permissions, allow: Permissions, deny: Permissions) -> Permissions {
+    base.difference(deny).union(allow)
+}
+
+fn apply_implicit_permissions(mut base: Permissions) -> Permissions {
+    if !base.send_messages() {
+        base.remove(
+            Permissions::SEND_TTS_MESSAGES
+                | Permissions::MENTION_EVERYONE
+                | Permissions::EMBED_LINKS
+                | Permissions::ATTACH_FILES,
+        );
+    }
+
+    if !base.read_messages() {
+        base = base.difference(Permissions::all_channel());
+    }
+
+    base
+}
+
+impl fmt::Display for GuildChannel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
+impl PartialEq for GuildChannel {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for GuildChannel {}
+
+impl Hash for GuildChannel {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl HasId for GuildChannel {
+    fn id(&self) -> Snowflake {
+        self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::time::{Duration, SystemTime};
+
+    use abc::{HasId, Snowflake};
+    use enums::{
+        ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, Permissions, VideoQualityMode,
+    };
+
+    use super::{
+        GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
+    };
+    use crate::{Guild, Member, Role, User};
+
+    fn role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
+        Role::new(guild_id, id, name).with_position(position)
+    }
+
+    fn sample_guild() -> Guild {
+        let everyone = role(100, 100, "@everyone", 0).with_permissions(Permissions::VIEW_CHANNEL);
+        let member_role = role(100, 20, "Member", 2).with_permissions(Permissions::SEND_MESSAGES);
+        let owner = Member::new(User::new(1_u64, "owner"), 100_u64);
+        let member =
+            Member::new(User::new(2_u64, "member"), 100_u64).with_roles(vec![member_role.clone()]);
+
+        Guild::new(100_u64, "Test Guild")
+            .with_owner_id(1_u64)
+            .with_roles(vec![everyone, member_role])
+            .with_members(vec![owner, member])
+    }
+
+    #[test]
+    fn permission_overwrite_tristate() {
+        let mut overwrite = PermissionOverwrite::new();
+        assert!(overwrite.is_empty());
+        assert_eq!(overwrite.get(Permissions::VIEW_CHANNEL), None);
+
+        overwrite.set(Permissions::VIEW_CHANNEL, Some(true));
+        overwrite.set(Permissions::SEND_MESSAGES, Some(false));
+
+        assert_eq!(overwrite.get(Permissions::VIEW_CHANNEL), Some(true));
+        assert_eq!(overwrite.get(Permissions::SEND_MESSAGES), Some(false));
+        assert_eq!(overwrite.get(Permissions::MANAGE_GUILD), None);
+        assert_eq!(overwrite.allow(), Permissions::VIEW_CHANNEL);
+        assert_eq!(overwrite.deny(), Permissions::SEND_MESSAGES);
+        assert_eq!(
+            overwrite.pair(),
+            (Permissions::VIEW_CHANNEL, Permissions::SEND_MESSAGES)
+        );
+
+        overwrite.set(Permissions::VIEW_CHANNEL, Some(false));
+        assert_eq!(overwrite.get(Permissions::VIEW_CHANNEL), Some(false));
+        assert_eq!(overwrite.allow(), Permissions::none());
+
+        overwrite.set(Permissions::VIEW_CHANNEL, None);
+        assert_eq!(overwrite.get(Permissions::VIEW_CHANNEL), None);
+
+        overwrite.allow_all(Permissions::BAN_MEMBERS);
+        overwrite.deny_all(Permissions::KICK_MEMBERS);
+        assert_eq!(overwrite.get(Permissions::BAN_MEMBERS), Some(true));
+        assert_eq!(overwrite.get(Permissions::KICK_MEMBERS), Some(false));
+
+        overwrite.clear(Permissions::BAN_MEMBERS | Permissions::KICK_MEMBERS);
+        assert_eq!(overwrite.get(Permissions::BAN_MEMBERS), None);
+        assert_eq!(overwrite.get(Permissions::KICK_MEMBERS), None);
+        assert_eq!(overwrite.get(Permissions::SEND_MESSAGES), Some(false));
+
+        overwrite.clear(Permissions::SEND_MESSAGES);
+        assert!(overwrite.is_empty());
+    }
+
+    #[test]
+    fn overwrite_entries_and_types() {
+        let overwrite =
+            PermissionOverwrite::from_pair(Permissions::VIEW_CHANNEL, Permissions::SEND_MESSAGES);
+        let role_entry = PermissionOverwriteEntry::role(Snowflake::new(20), overwrite);
+        let member_entry = PermissionOverwriteEntry::member(Snowflake::new(2), overwrite);
+
+        assert!(role_entry.is_role());
+        assert!(!role_entry.is_member());
+        assert!(role_entry.matches(Snowflake::new(20), PermissionOverwriteType::Role));
+        assert!(!role_entry.matches(Snowflake::new(20), PermissionOverwriteType::Member));
+        assert!(member_entry.is_member());
+
+        assert_eq!(
+            PermissionOverwriteType::from_value(0),
+            Some(PermissionOverwriteType::Role)
+        );
+        assert_eq!(
+            PermissionOverwriteType::from_value(1),
+            Some(PermissionOverwriteType::Member)
+        );
+        assert_eq!(PermissionOverwriteType::from_value(2), None);
+        assert_eq!(PermissionOverwriteType::Member.to_string(), "member");
+
+        let mut channel = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text);
+        assert_eq!(channel.overwrites(), &[]);
+        channel.set_overwrite(role_entry);
+        channel.set_overwrite(member_entry);
+
+        assert_eq!(channel.overwrites().len(), 2);
+        assert!(channel.overwrite_for_role(20_u64).is_some());
+        assert!(channel.overwrite_for_member(2_u64).is_some());
+
+        let replacement = PermissionOverwriteEntry::role(
+            Snowflake::new(20),
+            PermissionOverwrite::from_pair(Permissions::SEND_MESSAGES, Permissions::none()),
+        );
+        channel.set_overwrite(replacement);
+        assert_eq!(channel.overwrites().len(), 2);
+        assert_eq!(
+            channel
+                .overwrite_for_role(20_u64)
+                .unwrap()
+                .overwrite
+                .allow(),
+            Permissions::SEND_MESSAGES
+        );
+
+        assert_eq!(
+            channel
+                .remove_overwrite(20_u64, PermissionOverwriteType::Role)
+                .unwrap()
+                .target_id,
+            Snowflake::new(20)
+        );
+        assert!(channel.overwrite_for_role(20_u64).is_none());
+        assert_eq!(channel.overwrites().len(), 1);
+    }
+
+    #[test]
+    fn channel_builders_and_classification() {
+        let channel = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text)
+            .with_position(3)
+            .with_category_id(5_u64)
+            .with_nsfw(true)
+            .with_flags(ChannelFlags::PINNED)
+            .with_topic("A topic")
+            .with_slowmode_delay(10)
+            .with_default_auto_archive_duration(60)
+            .with_default_thread_slowmode_delay(5)
+            .with_last_message_id(99_u64)
+            .with_bitrate(128_000)
+            .with_user_limit(10)
+            .with_rtc_region("us-east")
+            .with_video_quality_mode(VideoQualityMode::Full)
+            .with_status("Status")
+            .with_default_layout(ForumLayout::GalleryView)
+            .with_default_sort_order(ForumSortOrder::CreationDate);
+
+        assert_eq!(channel.id, Snowflake::new(10));
+        assert_eq!(channel.id(), Snowflake::new(10));
+        assert_eq!(channel.guild_id, Snowflake::new(100));
+        assert_eq!(channel.channel_type(), ChannelType::Text);
+        assert_eq!(channel.position, 3);
+        assert_eq!(channel.category_id, Some(Snowflake::new(5)));
+        assert!(channel.is_nsfw());
+        assert!(channel.flags.pinned());
+        assert_eq!(channel.topic.as_deref(), Some("A topic"));
+        assert_eq!(channel.slowmode_delay, 10);
+        assert_eq!(channel.default_auto_archive_duration, 60);
+        assert_eq!(channel.default_thread_slowmode_delay, 5);
+        assert_eq!(channel.last_message_id, Some(Snowflake::new(99)));
+        assert_eq!(channel.bitrate, 128_000);
+        assert_eq!(channel.user_limit, 10);
+        assert_eq!(channel.rtc_region.as_deref(), Some("us-east"));
+        assert_eq!(channel.video_quality_mode, VideoQualityMode::Full);
+        assert_eq!(channel.status.as_deref(), Some("Status"));
+        assert_eq!(channel.default_layout, ForumLayout::GalleryView);
+        assert_eq!(channel.default_sort_order, ForumSortOrder::CreationDate);
+
+        assert!(channel.is_text());
+        assert!(!channel.is_voice());
+        assert!(!channel.is_category());
+        assert!(!channel.is_forum());
+        assert!(!channel.is_media());
+        assert!(!channel.is_thread());
+        assert_eq!(channel.mention(), "<#10>");
+        assert_eq!(channel.jump_url(), "https://discord.com/channels/100/10");
+        assert_eq!(channel.to_string(), "general");
+        assert_eq!(channel.created_at(), Snowflake::new(10).created_at());
+    }
+
+    #[test]
+    fn channel_type_helpers() {
+        let voice = GuildChannel::new(10_u64, 100_u64, "voice", ChannelType::Voice);
+        let stage = GuildChannel::new(11_u64, 100_u64, "stage", ChannelType::StageVoice);
+        let category = GuildChannel::new(12_u64, 100_u64, "category", ChannelType::Category);
+        let forum = GuildChannel::new(13_u64, 100_u64, "forum", ChannelType::Forum);
+        let media = GuildChannel::new(14_u64, 100_u64, "media", ChannelType::Media);
+        let thread = GuildChannel::new(15_u64, 100_u64, "thread", ChannelType::PublicThread);
+        let news = GuildChannel::new(16_u64, 100_u64, "news", ChannelType::News);
+
+        assert!(voice.is_voice());
+        assert!(stage.is_stage_voice());
+        assert!(category.is_category());
+        assert!(forum.is_forum());
+        assert!(media.is_media());
+        assert!(thread.is_thread());
+        assert!(news.is_news());
+    }
+
+    #[test]
+    fn category_and_sync_helpers() {
+        let category = GuildChannel::new(5_u64, 100_u64, "Category", ChannelType::Category)
+            .with_permission_overwrites(vec![PermissionOverwriteEntry::role(
+                Snowflake::new(20),
+                PermissionOverwrite::from_pair(Permissions::VIEW_CHANNEL, Permissions::none()),
+            )]);
+        let channel = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text)
+            .with_category_id(5_u64)
+            .with_permission_overwrites(category.overwrites().to_vec());
+        let guild = sample_guild().with_channels(vec![category.clone(), channel]);
+
+        let channel = guild.get_channel(10_u64).unwrap();
+        assert_eq!(
+            channel
+                .category(&guild)
+                .map(|category| category.name.as_str()),
+            Some("Category")
+        );
+        assert!(channel.permissions_synced(&guild));
+
+        let unsynced =
+            GuildChannel::new(11_u64, 100_u64, "other", ChannelType::Text).with_category_id(5_u64);
+        let guild = guild.with_channels(vec![category, unsynced]);
+        assert!(
+            !guild
+                .get_channel(11_u64)
+                .unwrap()
+                .permissions_synced(&guild)
+        );
+
+        let no_category = GuildChannel::new(12_u64, 100_u64, "bare", ChannelType::Text);
+        let guild = guild.with_channels(vec![no_category]);
+        assert!(
+            !guild
+                .get_channel(12_u64)
+                .unwrap()
+                .permissions_synced(&guild)
+        );
+    }
+
+    #[test]
+    fn resolves_member_permissions() {
+        let guild = sample_guild();
+        let member = guild.get_member(2_u64).unwrap();
+        let channel = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text);
+
+        let permissions = channel.permissions_for(&guild, member);
+        assert!(permissions.view_channel());
+        assert!(permissions.send_messages());
+
+        let member_role = role(100, 20, "Member", 2)
+            .with_permissions(Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES);
+        let guild = sample_guild().with_roles(vec![role(100, 100, "@everyone", 0), member_role]);
+        let member = guild.get_member(2_u64).unwrap();
+
+        let channel = channel.with_permission_overwrites(vec![
+            PermissionOverwriteEntry::role(
+                Snowflake::new(100),
+                PermissionOverwrite::from_pair(Permissions::none(), Permissions::MANAGE_GUILD),
+            ),
+            PermissionOverwriteEntry::role(
+                Snowflake::new(20),
+                PermissionOverwrite::from_pair(
+                    Permissions::READ_MESSAGE_HISTORY,
+                    Permissions::SEND_MESSAGES,
+                ),
+            ),
+            PermissionOverwriteEntry::member(
+                Snowflake::new(2),
+                PermissionOverwrite::from_pair(Permissions::BAN_MEMBERS, Permissions::none()),
+            ),
+        ]);
+
+        let permissions = channel.permissions_for(&guild, member);
+        assert!(permissions.view_channel());
+        assert!(!permissions.send_messages());
+        assert!(permissions.read_message_history());
+        assert!(permissions.ban_members());
+        assert!(!permissions.manage_guild());
+
+        let owner = guild.get_member(1_u64).unwrap();
+        let owner_permissions = channel.permissions_for(&guild, owner);
+        assert!(owner_permissions.view_channel());
+        assert!(owner_permissions.send_messages());
+        assert!(!owner_permissions.connect());
+
+        let admin = role(100, 30, "Admin", 3)
+            .with_permissions(Permissions::ADMINISTRATOR | Permissions::VIEW_CHANNEL);
+        let guild = guild.with_roles(vec![role(100, 100, "@everyone", 0), admin]);
+        let guild = guild.with_members(vec![
+            Member::new(User::new(2_u64, "member"), 100_u64)
+                .with_roles(vec![role(100, 30, "Admin", 3)]),
+        ]);
+        let member = guild.get_member(2_u64).unwrap();
+        let permissions = channel.permissions_for(&guild, member);
+        assert!(permissions.administrator());
+        assert!(permissions.manage_guild());
+    }
+
+    #[test]
+    fn timeout_masks_member_permissions() {
+        let guild = sample_guild();
+        let member_role = role(100, 20, "Member", 2).with_permissions(
+            Permissions::VIEW_CHANNEL
+                | Permissions::READ_MESSAGE_HISTORY
+                | Permissions::SEND_MESSAGES
+                | Permissions::BAN_MEMBERS,
+        );
+        let guild = guild.with_roles(vec![role(100, 100, "@everyone", 0), member_role.clone()]);
+        let member = Member::new(User::new(2_u64, "member"), 100_u64)
+            .with_roles(vec![member_role])
+            .with_timed_out_until(SystemTime::now() + Duration::from_secs(60));
+        let guild = guild.with_members(vec![member]);
+        let member = guild.get_member(2_u64).unwrap();
+        let channel = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text);
+
+        let permissions = channel.permissions_for(&guild, member);
+        assert!(permissions.view_channel());
+        assert!(permissions.read_message_history());
+        assert!(!permissions.send_messages());
+        assert!(!permissions.ban_members());
+    }
+
+    #[test]
+    fn resolves_role_permissions() {
+        let guild = sample_guild();
+        let member_role = guild.get_role(20_u64).unwrap();
+        let channel = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text)
+            .with_permission_overwrites(vec![PermissionOverwriteEntry::role(
+                Snowflake::new(20),
+                PermissionOverwrite::from_pair(Permissions::none(), Permissions::SEND_MESSAGES),
+            )]);
+
+        let permissions = channel.permissions_for_role(&guild, member_role);
+        assert!(permissions.view_channel());
+        assert!(!permissions.send_messages());
+
+        let everyone = guild.default_role().unwrap();
+        let permissions = channel.permissions_for_role(&guild, everyone);
+        assert!(permissions.view_channel());
+        assert!(!permissions.send_messages());
+    }
+
+    #[test]
+    fn voice_and_category_permissions() {
+        let guild = sample_guild();
+        let member = guild.get_member(2_u64).unwrap();
+
+        let voice = GuildChannel::new(10_u64, 100_u64, "voice", ChannelType::Voice);
+        let permissions = voice.permissions_for(&guild, member);
+        assert!(permissions.view_channel());
+        assert!(!permissions.connect());
+        assert!(!permissions.manage_channels());
+        assert!(!permissions.manage_roles());
+
+        let category = GuildChannel::new(11_u64, 100_u64, "category", ChannelType::Category);
+        let permissions = category.permissions_for(&guild, member);
+        assert!(permissions.view_channel());
+        assert!(permissions.send_messages());
+    }
+
+    #[test]
+    fn equality_and_hash_use_id_only() {
+        let a = GuildChannel::new(1_u64, 100_u64, "First", ChannelType::Text);
+        let b = GuildChannel::new(1_u64, 100_u64, "Second", ChannelType::Voice).with_position(9);
+        let c = GuildChannel::new(2_u64, 100_u64, "First", ChannelType::Text);
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+
+        let mut hasher_a = DefaultHasher::new();
+        let mut hasher_b = DefaultHasher::new();
+        a.hash(&mut hasher_a);
+        b.hash(&mut hasher_b);
+        assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+}
