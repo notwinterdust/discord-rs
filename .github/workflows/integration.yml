@@ -27,7 +27,7 @@ jobs:
       TEST_CHANNEL_ID: ${{ secrets.TEST_CHANNEL_ID }}
       RUST_LOG: debug
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install system deps
