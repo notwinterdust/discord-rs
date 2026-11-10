@@ -1,8 +1,8 @@
 //! Message models.
 //!
 //! This module currently covers core message data: authors, attachments,
-//! embeds, reactions, stickers, message references and the message envelope
-//! itself. Components, polls and interaction metadata will be added with their
+//! components, embeds, reactions, stickers, message references and the message
+//! envelope itself. Polls and interaction metadata will be added with their
 //! own models.
 
 use std::fmt;
@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use abc::{HasId, Snowflake};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
-use crate::{Embed, Member, Reaction, StickerItem, User};
+use crate::{ActionRow, Embed, Member, Reaction, StickerItem, User};
 
 /// The author of a message.
 ///
@@ -461,6 +461,8 @@ pub struct Message {
     pub embeds: Vec<Embed>,
     /// The message's sticker items.
     pub sticker_items: Vec<StickerItem>,
+    /// The message's component rows.
+    pub components: Vec<ActionRow>,
     /// The message's reactions.
     pub reactions: Vec<Reaction>,
     /// The message this message references, if any.
@@ -496,6 +498,7 @@ impl Default for Message {
             attachments: Vec::new(),
             embeds: Vec::new(),
             sticker_items: Vec::new(),
+            components: Vec::new(),
             reactions: Vec::new(),
             reference: None,
             webhook_id: None,
@@ -629,6 +632,13 @@ impl Message {
     #[must_use]
     pub fn with_sticker_items(mut self, sticker_items: Vec<StickerItem>) -> Self {
         self.sticker_items = sticker_items;
+        self
+    }
+
+    /// Sets the message's component rows.
+    #[must_use]
+    pub fn with_components(mut self, components: Vec<ActionRow>) -> Self {
+        self.components = components;
         self
     }
 
@@ -776,10 +786,10 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use abc::{HasId, Snowflake};
-    use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
+    use enums::{AttachmentFlags, ButtonStyle, MessageFlags, MessageReferenceType, MessageType};
 
     use super::{Attachment, Message, MessageAuthor, MessageReference};
-    use crate::{Embed, Member, PartialEmoji, Reaction, StickerItem, User};
+    use crate::{ActionRow, Button, Embed, Member, PartialEmoji, Reaction, StickerItem, User};
 
     #[test]
     fn attachment_builders_and_helpers() {
@@ -992,6 +1002,20 @@ mod tests {
 
         assert_eq!(message.sticker_items.len(), 1);
         assert_eq!(message.sticker_items[0].name, "wave");
+    }
+
+    #[test]
+    fn message_components_are_stored() {
+        let row = ActionRow::new(vec![
+            Button::new(ButtonStyle::Primary)
+                .with_custom_id("confirm")
+                .into(),
+        ]);
+        let message =
+            Message::new(10_u64, 20_u64, User::new(1_u64, "winter")).with_components(vec![row]);
+
+        assert_eq!(message.components.len(), 1);
+        assert_eq!(message.components[0].buttons().count(), 1);
     }
 
     #[test]

@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod channel;
+mod components;
 mod embed;
 mod guild;
 mod intents;
@@ -17,6 +18,7 @@ mod role_flags;
 mod sticker;
 
 pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQualityMode};
+pub use components::{ButtonStyle, ComponentType, SelectDefaultValueType, TextStyle};
 pub use embed::{EmbedFlags, EmbedType};
 pub use guild::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
 pub use intents::Intents;
