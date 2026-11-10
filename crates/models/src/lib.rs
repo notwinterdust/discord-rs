@@ -3,7 +3,8 @@
 //! This crate will grow to contain `User`, `Guild`, `Channel`, `Message` and
 //! the rest of Discord's API models. It currently covers guilds, guild
 //! channels, permission overwrites, messages, components, embeds, reactions,
-//! emojis, stickers, users, client users, guild roles and guild members.
+//! emojis, stickers, polls, users, client users, guild roles and guild
+//! members.
 
 #![forbid(unsafe_code)]
 
@@ -15,6 +16,7 @@ mod emoji;
 mod guild;
 mod member;
 mod message;
+mod poll;
 mod reaction;
 mod role;
 mod sticker;
@@ -37,12 +39,13 @@ pub use enums::{
     AttachmentFlags, ButtonStyle, ChannelFlags, ChannelType, ComponentType, ContentFilter,
     EmbedFlags, EmbedType, ForumLayout, ForumSortOrder, MemberFlags, MessageFlags,
     MessageReferenceType, MessageType, MfaLevel, NotificationLevel, NsfwLevel, Permissions,
-    PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
-    StickerType, TextStyle, VerificationLevel, VideoQualityMode,
+    PollLayoutType, PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType,
+    StickerFormatType, StickerType, TextStyle, VerificationLevel, VideoQualityMode,
 };
 pub use guild::Guild;
 pub use member::Member;
 pub use message::{Attachment, Message, MessageAuthor, MessageReference};
+pub use poll::{Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
 pub use reaction::Reaction;
 pub use role::{Role, RoleIcon, RoleTags};
 pub use sticker::{Sticker, StickerItem, StickerPack};

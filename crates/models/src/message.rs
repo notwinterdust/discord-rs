@@ -1,9 +1,9 @@
 //! Message models.
 //!
 //! This module currently covers core message data: authors, attachments,
-//! components, embeds, reactions, stickers, message references and the message
-//! envelope itself. Polls and interaction metadata will be added with their
-//! own models.
+//! components, embeds, polls, reactions, stickers, message references and the
+//! message envelope itself. Interaction metadata will be added with its own
+//! models.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use abc::{HasId, Snowflake};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
-use crate::{ActionRow, Embed, Member, Reaction, StickerItem, User};
+use crate::{ActionRow, Embed, Member, Poll, Reaction, StickerItem, User};
 
 /// The author of a message.
 ///
@@ -463,6 +463,8 @@ pub struct Message {
     pub sticker_items: Vec<StickerItem>,
     /// The message's component rows.
     pub components: Vec<ActionRow>,
+    /// The message's poll, if it has one.
+    pub poll: Option<Poll>,
     /// The message's reactions.
     pub reactions: Vec<Reaction>,
     /// The message this message references, if any.
@@ -499,6 +501,7 @@ impl Default for Message {
             embeds: Vec::new(),
             sticker_items: Vec::new(),
             components: Vec::new(),
+            poll: None,
             reactions: Vec::new(),
             reference: None,
             webhook_id: None,
@@ -639,6 +642,13 @@ impl Message {
     #[must_use]
     pub fn with_components(mut self, components: Vec<ActionRow>) -> Self {
         self.components = components;
+        self
+    }
+
+    /// Sets the message's poll.
+    #[must_use]
+    pub fn with_poll(mut self, poll: Poll) -> Self {
+        self.poll = Some(poll);
         self
     }
 
@@ -789,7 +799,10 @@ mod tests {
     use enums::{AttachmentFlags, ButtonStyle, MessageFlags, MessageReferenceType, MessageType};
 
     use super::{Attachment, Message, MessageAuthor, MessageReference};
-    use crate::{ActionRow, Button, Embed, Member, PartialEmoji, Reaction, StickerItem, User};
+    use crate::{
+        ActionRow, Button, Embed, Member, PartialEmoji, Poll, PollAnswer, Reaction, StickerItem,
+        User,
+    };
 
     #[test]
     fn attachment_builders_and_helpers() {
@@ -1016,6 +1029,21 @@ mod tests {
 
         assert_eq!(message.components.len(), 1);
         assert_eq!(message.components[0].buttons().count(), 1);
+    }
+
+    #[test]
+    fn message_poll_is_stored() {
+        let poll = Poll::new("Favourite?").add_answer(PollAnswer::new(1, "Yes"));
+        let message = Message::new(10_u64, 20_u64, User::new(1_u64, "winter")).with_poll(poll);
+
+        assert_eq!(
+            message.poll.as_ref().and_then(Poll::question_text),
+            Some("Favourite?")
+        );
+        assert_eq!(
+            message.poll.as_ref().map(|poll| poll.answers().len()),
+            Some(1)
+        );
     }
 
     #[test]
