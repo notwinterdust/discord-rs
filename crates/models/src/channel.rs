@@ -13,7 +13,7 @@ use enums::{
     ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, Permissions, VideoQualityMode,
 };
 
-use crate::{Guild, Member, Role, ThreadInfo, ThreadMember, ThreadMetadata};
+use crate::{ForumTag, Guild, Member, Role, ThreadInfo, ThreadMember, ThreadMetadata};
 
 /// The target kind of a channel permission overwrite.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -306,6 +306,8 @@ pub struct GuildChannel {
     pub default_layout: ForumLayout,
     /// The forum's default sort order.
     pub default_sort_order: ForumSortOrder,
+    /// The tags available in a forum or media channel.
+    pub available_tags: Vec<ForumTag>,
     /// Thread-specific state, for thread channels.
     pub thread: Option<ThreadInfo>,
 }
@@ -334,6 +336,7 @@ impl Default for GuildChannel {
             status: None,
             default_layout: ForumLayout::default(),
             default_sort_order: ForumSortOrder::default(),
+            available_tags: Vec::new(),
             thread: None,
         }
     }
@@ -476,6 +479,20 @@ impl GuildChannel {
         self
     }
 
+    /// Sets the tags available in a forum or media channel.
+    #[must_use]
+    pub fn with_available_tags(mut self, tags: Vec<ForumTag>) -> Self {
+        self.available_tags = tags;
+        self
+    }
+
+    /// Appends an available forum tag.
+    #[must_use]
+    pub fn add_available_tag(mut self, tag: ForumTag) -> Self {
+        self.available_tags.push(tag);
+        self
+    }
+
     /// Sets the thread-specific state for a thread channel.
     #[must_use]
     pub fn with_thread_info(mut self, thread: ThreadInfo) -> Self {
@@ -529,6 +546,59 @@ impl GuildChannel {
     #[must_use]
     pub const fn is_media(&self) -> bool {
         matches!(self.channel_type, ChannelType::Media)
+    }
+
+    /// Returns `true` if the channel supports forum tags.
+    #[must_use]
+    pub const fn supports_tags(&self) -> bool {
+        matches!(self.channel_type, ChannelType::Forum | ChannelType::Media)
+    }
+
+    /// Returns the tags available in a forum or media channel.
+    #[must_use]
+    pub fn available_tags(&self) -> &[ForumTag] {
+        &self.available_tags
+    }
+
+    /// Returns an available forum tag by ID, if it exists.
+    #[must_use]
+    pub fn available_tag(&self, tag_id: impl Into<Snowflake>) -> Option<&ForumTag> {
+        let tag_id = tag_id.into();
+        self.available_tags.iter().find(|tag| tag.id == tag_id)
+    }
+
+    /// Returns `true` if the channel has a tag with the given ID.
+    #[must_use]
+    pub fn has_tag(&self, tag_id: impl Into<Snowflake>) -> bool {
+        self.available_tag(tag_id).is_some()
+    }
+
+    /// Returns the tag IDs applied to a thread.
+    #[must_use]
+    pub fn applied_tag_ids(&self) -> &[Snowflake] {
+        self.thread
+            .as_ref()
+            .map_or(&[], |thread| thread.applied_tags.as_slice())
+    }
+
+    /// Returns the parent forum's tags applied to a thread.
+    ///
+    /// Returns an empty list when the thread has no applied tags or its parent
+    /// channel is not cached.
+    #[must_use]
+    pub fn applied_tags<'a>(&'a self, guild: &'a Guild) -> Vec<&'a ForumTag> {
+        let Some(thread) = self.thread.as_ref() else {
+            return Vec::new();
+        };
+        let Some(parent) = self.thread_parent(guild) else {
+            return Vec::new();
+        };
+
+        thread
+            .applied_tags
+            .iter()
+            .filter_map(|tag_id| parent.available_tag(*tag_id))
+            .collect()
     }
 
     /// Returns `true` if the channel is a thread.
@@ -954,7 +1024,9 @@ mod tests {
     use super::{
         GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
     };
-    use crate::{Guild, Member, Role, ThreadInfo, ThreadMember, ThreadMetadata, User};
+    use crate::{
+        ForumTag, Guild, Member, PartialEmoji, Role, ThreadInfo, ThreadMember, ThreadMetadata, User,
+    };
 
     fn role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
         Role::new(guild_id, id, name).with_position(position)
@@ -1320,6 +1392,52 @@ mod tests {
         assert_eq!(plain.thread_parent(&guild), None);
         assert_eq!(plain.thread_parent_id(), None);
         assert_eq!(plain.thread_owner_id(), None);
+    }
+
+    #[test]
+    fn forum_tags_and_thread_applied_tags() {
+        let bug = ForumTag::new("Bug")
+            .with_id(1_u64)
+            .with_emoji(PartialEmoji::unicode("🐛"));
+        let question = ForumTag::new("Question").with_id(2_u64);
+        let forum = GuildChannel::new(10_u64, 100_u64, "forum", ChannelType::Forum)
+            .with_available_tags(vec![bug.clone()])
+            .add_available_tag(question.clone());
+
+        assert!(forum.supports_tags());
+        assert!(!forum.is_thread());
+        assert_eq!(forum.available_tags(), &[bug.clone(), question]);
+        assert_eq!(
+            forum.available_tag(1_u64).map(|tag| tag.name.as_str()),
+            Some("Bug")
+        );
+        assert!(forum.has_tag(2_u64));
+        assert!(!forum.has_tag(3_u64));
+        assert!(forum.available_tag(3_u64).is_none());
+
+        let thread = GuildChannel::new(11_u64, 100_u64, "topic", ChannelType::PublicThread)
+            .with_thread_info(
+                ThreadInfo::new(10_u64, 1_u64)
+                    .add_applied_tag(1_u64)
+                    .add_applied_tag(3_u64),
+            );
+        let guild = sample_guild().with_channels(vec![forum, thread]);
+        let thread = guild.get_channel(11_u64).unwrap();
+
+        assert_eq!(
+            thread.applied_tag_ids(),
+            &[Snowflake::new(1), Snowflake::new(3)]
+        );
+        let applied = thread.applied_tags(&guild);
+        assert_eq!(applied.len(), 1);
+        assert_eq!(applied[0].name, "Bug");
+        assert_eq!(applied[0].to_string(), "Bug");
+
+        let plain = GuildChannel::new(12_u64, 100_u64, "plain", ChannelType::Text);
+        assert!(!plain.supports_tags());
+        assert!(plain.available_tags().is_empty());
+        assert!(plain.applied_tag_ids().is_empty());
+        assert!(plain.applied_tags(&guild).is_empty());
     }
 
     #[test]

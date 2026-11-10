@@ -2,9 +2,9 @@
 //!
 //! This crate will grow to contain `User`, `Guild`, `Channel`, `Message` and
 //! the rest of Discord's API models. It currently covers guilds, guild
-//! channels, permission overwrites, messages, components, embeds, interactions,
-//! reactions, emojis, stickers, polls, threads, users, client users, guild roles
-//! and guild members.
+//! channels, permission overwrites, messages, components, embeds, forum tags,
+//! interactions, reactions, emojis, stickers, polls, threads, users, client
+//! users, guild roles and guild members.
 
 #![forbid(unsafe_code)]
 
@@ -13,6 +13,7 @@ mod client_user;
 mod components;
 mod embed;
 mod emoji;
+mod forum;
 mod guild;
 mod interaction;
 mod member;
@@ -46,6 +47,7 @@ pub use enums::{
     PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
     StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode,
 };
+pub use forum::ForumTag;
 pub use guild::Guild;
 pub use interaction::{
     ApplicationCommandData, ApplicationCommandOption, AutocompleteChoice, AutocompleteResponseData,
