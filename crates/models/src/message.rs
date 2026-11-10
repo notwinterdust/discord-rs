@@ -1,9 +1,9 @@
 //! Message models.
 //!
 //! This module currently covers core message data: authors, attachments,
-//! embeds, reactions, message references and the message envelope itself.
-//! Stickers, components, polls and interaction metadata will be added with
-//! their own models.
+//! embeds, reactions, stickers, message references and the message envelope
+//! itself. Components, polls and interaction metadata will be added with their
+//! own models.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use abc::{HasId, Snowflake};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
-use crate::{Embed, Member, Reaction, User};
+use crate::{Embed, Member, Reaction, StickerItem, User};
 
 /// The author of a message.
 ///
@@ -459,6 +459,8 @@ pub struct Message {
     pub attachments: Vec<Attachment>,
     /// The message's embeds.
     pub embeds: Vec<Embed>,
+    /// The message's sticker items.
+    pub sticker_items: Vec<StickerItem>,
     /// The message's reactions.
     pub reactions: Vec<Reaction>,
     /// The message this message references, if any.
@@ -493,6 +495,7 @@ impl Default for Message {
             mention_channel_ids: Vec::new(),
             attachments: Vec::new(),
             embeds: Vec::new(),
+            sticker_items: Vec::new(),
             reactions: Vec::new(),
             reference: None,
             webhook_id: None,
@@ -619,6 +622,13 @@ impl Message {
     #[must_use]
     pub fn with_embeds(mut self, embeds: Vec<Embed>) -> Self {
         self.embeds = embeds;
+        self
+    }
+
+    /// Sets the message's sticker items.
+    #[must_use]
+    pub fn with_sticker_items(mut self, sticker_items: Vec<StickerItem>) -> Self {
+        self.sticker_items = sticker_items;
         self
     }
 
@@ -769,7 +779,7 @@ mod tests {
     use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
     use super::{Attachment, Message, MessageAuthor, MessageReference};
-    use crate::{Embed, Member, PartialEmoji, Reaction, User};
+    use crate::{Embed, Member, PartialEmoji, Reaction, StickerItem, User};
 
     #[test]
     fn attachment_builders_and_helpers() {
@@ -972,6 +982,16 @@ mod tests {
 
         assert_eq!(message.embeds.len(), 1);
         assert_eq!(message.embeds[0].title.as_deref(), Some("Title"));
+    }
+
+    #[test]
+    fn message_sticker_items_are_stored() {
+        let item = StickerItem::new(30_u64, "wave");
+        let message =
+            Message::new(10_u64, 20_u64, User::new(1_u64, "winter")).with_sticker_items(vec![item]);
+
+        assert_eq!(message.sticker_items.len(), 1);
+        assert_eq!(message.sticker_items[0].name, "wave");
     }
 
     #[test]

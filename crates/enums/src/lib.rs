@@ -14,6 +14,7 @@ mod message;
 mod permissions;
 mod public_user_flags;
 mod role_flags;
+mod sticker;
 
 pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQualityMode};
 pub use embed::{EmbedFlags, EmbedType};
@@ -24,3 +25,4 @@ pub use message::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageTy
 pub use permissions::Permissions;
 pub use public_user_flags::PublicUserFlags;
 pub use role_flags::RoleFlags;
+pub use sticker::{StickerFormatType, StickerType};

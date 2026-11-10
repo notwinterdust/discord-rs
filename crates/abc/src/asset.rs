@@ -221,6 +221,16 @@ impl Asset {
         )
     }
 
+    /// Creates a sticker pack banner.
+    #[must_use]
+    pub fn from_sticker_banner(banner_id: Snowflake) -> Self {
+        Self::new(
+            format!("{CDN_BASE}/app-assets/710982414301790216/store/{banner_id}.png"),
+            banner_id.to_string(),
+            false,
+        )
+    }
+
     /// Returns the underlying CDN URL.
     #[must_use]
     pub fn url(&self) -> &str {
@@ -404,6 +414,17 @@ mod tests {
             "https://cdn.discordapp.com/embed/avatars/3.png"
         );
         assert_eq!(asset.key(), "3");
+    }
+
+    #[test]
+    fn sticker_banner_url() {
+        let asset = Asset::from_sticker_banner(Snowflake::new(42));
+        assert_eq!(
+            asset.url(),
+            "https://cdn.discordapp.com/app-assets/710982414301790216/store/42.png"
+        );
+        assert_eq!(asset.key(), "42");
+        assert!(!asset.is_animated());
     }
 
     #[test]

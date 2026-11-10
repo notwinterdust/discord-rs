@@ -13,7 +13,7 @@ use enums::{
     VerificationLevel,
 };
 
-use crate::{GuildChannel, Member, Role};
+use crate::{GuildChannel, Member, Role, Sticker};
 
 /// Represents a Discord guild (server).
 ///
@@ -42,6 +42,8 @@ pub struct Guild {
     pub members: Vec<Member>,
     /// The guild's cached channels.
     pub channels: Vec<GuildChannel>,
+    /// The guild's stickers.
+    pub stickers: Vec<Sticker>,
     /// The number of members in the guild, if known.
     pub member_count: Option<u64>,
     /// Whether the guild is unavailable.
@@ -113,6 +115,7 @@ impl Default for Guild {
             roles: Vec::new(),
             members: Vec::new(),
             channels: Vec::new(),
+            stickers: Vec::new(),
             member_count: None,
             unavailable: false,
             verification_level: VerificationLevel::default(),
@@ -235,6 +238,20 @@ impl Guild {
             channel.guild_id = self.id;
         }
         self.channels = channels;
+        self
+    }
+
+    /// Sets the guild's stickers.
+    ///
+    /// Guild stickers have their guild ID updated to match this guild.
+    #[must_use]
+    pub fn with_stickers(mut self, mut stickers: Vec<Sticker>) -> Self {
+        for sticker in &mut stickers {
+            if sticker.is_guild() {
+                sticker.guild_id = Some(self.id);
+            }
+        }
+        self.stickers = stickers;
         self
     }
 
@@ -488,6 +505,21 @@ impl Guild {
         &self.channels
     }
 
+    /// Returns the guild's stickers.
+    #[must_use]
+    pub fn stickers(&self) -> &[Sticker] {
+        &self.stickers
+    }
+
+    /// Returns the sticker with the given ID, if it exists.
+    #[must_use]
+    pub fn get_sticker(&self, sticker_id: impl Into<Snowflake>) -> Option<&Sticker> {
+        let sticker_id = sticker_id.into();
+        self.stickers
+            .iter()
+            .find(|sticker| sticker.id == sticker_id)
+    }
+
     /// Returns the channel with the given ID, if it is cached.
     #[must_use]
     pub fn get_channel(&self, channel_id: impl Into<Snowflake>) -> Option<&GuildChannel> {
@@ -716,7 +748,7 @@ mod tests {
     use enums::{ChannelType, Permissions, VerificationLevel};
 
     use super::Guild;
-    use crate::{GuildChannel, Member, Role, RoleTags, User};
+    use crate::{GuildChannel, Member, Role, RoleTags, Sticker, User};
 
     fn sample_role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
         Role::new(guild_id, id, name).with_position(position)
@@ -998,5 +1030,24 @@ mod tests {
         assert!(guild.rules_channel().is_none());
         assert!(guild.public_updates_channel().is_none());
         assert!(guild.safety_alerts_channel().is_none());
+    }
+
+    #[test]
+    fn stickers_are_queryable() {
+        let guild = Guild::new(100_u64, "Test").with_stickers(vec![
+            Sticker::guild(1_u64, "guild-sticker", 999_u64),
+            Sticker::new(2_u64, "standard-sticker"),
+        ]);
+
+        assert_eq!(guild.stickers().len(), 2);
+        assert_eq!(
+            guild
+                .get_sticker(1_u64)
+                .map(|sticker| sticker.name.as_str()),
+            Some("guild-sticker")
+        );
+        assert_eq!(guild.stickers()[0].guild_id, Some(Snowflake::new(100)));
+        assert_eq!(guild.stickers()[1].guild_id, None);
+        assert!(guild.get_sticker(99_u64).is_none());
     }
 }
