@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use abc::{HasId, Snowflake};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
-use crate::{Member, User};
+use crate::{Member, Reaction, User};
 
 /// The author of a message.
 ///
@@ -457,6 +457,8 @@ pub struct Message {
     pub mention_channel_ids: Vec<Snowflake>,
     /// The message's attachments.
     pub attachments: Vec<Attachment>,
+    /// The message's reactions.
+    pub reactions: Vec<Reaction>,
     /// The message this message references, if any.
     pub reference: Option<MessageReference>,
     /// The ID of the webhook that sent the message, if any.
@@ -488,6 +490,7 @@ impl Default for Message {
             mention_role_ids: Vec::new(),
             mention_channel_ids: Vec::new(),
             attachments: Vec::new(),
+            reactions: Vec::new(),
             reference: None,
             webhook_id: None,
             application_id: None,
@@ -607,6 +610,21 @@ impl Message {
     pub fn with_attachments(mut self, attachments: Vec<Attachment>) -> Self {
         self.attachments = attachments;
         self
+    }
+
+    /// Sets the message's reactions.
+    #[must_use]
+    pub fn with_reactions(mut self, reactions: Vec<Reaction>) -> Self {
+        self.reactions = reactions;
+        self
+    }
+
+    /// Returns the reaction for an emoji, if one exists.
+    #[must_use]
+    pub fn reaction(&self, emoji: &crate::PartialEmoji) -> Option<&Reaction> {
+        self.reactions
+            .iter()
+            .find(|reaction| &reaction.emoji == emoji)
     }
 
     /// Sets the message reference.
@@ -741,7 +759,7 @@ mod tests {
     use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
     use super::{Attachment, Message, MessageAuthor, MessageReference};
-    use crate::{Member, User};
+    use crate::{Member, PartialEmoji, Reaction, User};
 
     #[test]
     fn attachment_builders_and_helpers() {
@@ -917,6 +935,21 @@ mod tests {
         assert_eq!(message.nonce.as_deref(), Some("nonce"));
         assert_eq!(message.created_at(), Snowflake::new(10).created_at());
         assert_eq!(message.jump_url(), "https://discord.com/channels/100/20/10");
+    }
+
+    #[test]
+    fn message_reactions_are_queryable() {
+        let emoji = PartialEmoji::unicode("🎉");
+        let reaction = Reaction::new(emoji.clone()).with_count(3);
+        let message =
+            Message::new(10_u64, 20_u64, User::new(1_u64, "winter")).with_reactions(vec![reaction]);
+
+        assert_eq!(message.reactions.len(), 1);
+        assert_eq!(
+            message.reaction(&emoji).map(|reaction| reaction.count),
+            Some(3)
+        );
+        assert!(message.reaction(&PartialEmoji::unicode("🎊")).is_none());
     }
 
     #[test]

@@ -277,6 +277,50 @@ impl fmt::Display for MessageReferenceType {
     }
 }
 
+/// The type of a reaction.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum ReactionType {
+    /// A normal reaction.
+    #[default]
+    Normal = 0,
+    /// A super reaction.
+    Burst = 1,
+}
+
+impl ReactionType {
+    /// Returns the raw API value.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
+
+    /// Converts a raw API value, returning `None` for unknown values.
+    #[must_use]
+    pub const fn from_value(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Normal),
+            1 => Some(Self::Burst),
+            _ => None,
+        }
+    }
+
+    /// Returns the lowercase name used by the API.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Burst => "burst",
+        }
+    }
+}
+
+impl fmt::Display for ReactionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Wraps the Discord message flag bitfield.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct MessageFlags(u64);
@@ -814,7 +858,7 @@ impl From<AttachmentFlags> for u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
+    use super::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType, ReactionType};
 
     #[test]
     fn message_type_round_trips() {
@@ -859,6 +903,15 @@ mod tests {
         assert_eq!(MessageReferenceType::from_value(2), None);
         assert_eq!(MessageReferenceType::DEFAULT, MessageReferenceType::Reply);
         assert_eq!(MessageReferenceType::Forward.to_string(), "forward");
+    }
+
+    #[test]
+    fn reaction_type() {
+        assert_eq!(ReactionType::from_value(0), Some(ReactionType::Normal));
+        assert_eq!(ReactionType::from_value(1), Some(ReactionType::Burst));
+        assert_eq!(ReactionType::from_value(2), None);
+        assert_eq!(ReactionType::Normal.to_string(), "normal");
+        assert_eq!(ReactionType::Burst.to_string(), "burst");
     }
 
     #[test]

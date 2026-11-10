@@ -18,7 +18,7 @@ pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQ
 pub use guild::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
 pub use intents::Intents;
 pub use member_flags::MemberFlags;
-pub use message::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
+pub use message::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType, ReactionType};
 pub use permissions::Permissions;
 pub use public_user_flags::PublicUserFlags;
 pub use role_flags::RoleFlags;
