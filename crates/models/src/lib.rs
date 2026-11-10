@@ -2,9 +2,9 @@
 //!
 //! This crate will grow to contain `User`, `Guild`, `Channel`, `Message` and
 //! the rest of Discord's API models. It currently covers guilds, guild
-//! channels, permission overwrites, messages, components, embeds, reactions,
-//! emojis, stickers, polls, users, client users, guild roles and guild
-//! members.
+//! channels, permission overwrites, messages, components, embeds, interactions,
+//! reactions, emojis, stickers, polls, users, client users, guild roles and
+//! guild members.
 
 #![forbid(unsafe_code)]
 
@@ -14,6 +14,7 @@ mod components;
 mod embed;
 mod emoji;
 mod guild;
+mod interaction;
 mod member;
 mod message;
 mod poll;
@@ -36,13 +37,22 @@ pub use embed::{
 };
 pub use emoji::PartialEmoji;
 pub use enums::{
+    ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
     AttachmentFlags, ButtonStyle, ChannelFlags, ChannelType, ComponentType, ContentFilter,
-    EmbedFlags, EmbedType, ForumLayout, ForumSortOrder, MemberFlags, MessageFlags,
-    MessageReferenceType, MessageType, MfaLevel, NotificationLevel, NsfwLevel, Permissions,
-    PollLayoutType, PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType,
-    StickerFormatType, StickerType, TextStyle, VerificationLevel, VideoQualityMode,
+    EmbedFlags, EmbedType, ForumLayout, ForumSortOrder, InteractionContextType,
+    InteractionResponseType, InteractionType, MemberFlags, MessageFlags, MessageReferenceType,
+    MessageType, MfaLevel, NotificationLevel, NsfwLevel, Permissions, PollLayoutType,
+    PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
+    StickerType, TextStyle, VerificationLevel, VideoQualityMode,
 };
 pub use guild::Guild;
+pub use interaction::{
+    ApplicationCommandData, ApplicationCommandOption, AutocompleteChoice, AutocompleteResponseData,
+    CommandOptionValue, Interaction, InteractionActivityInstance, InteractionData,
+    InteractionMessage, InteractionMessageData, InteractionResponse, InteractionResponseData,
+    MessageComponentData, MessageInteraction, MessageInteractionMetadata, ModalResponseData,
+    ModalSubmitComponent, ModalSubmitData, ResolvedData,
+};
 pub use member::Member;
 pub use message::{Attachment, Message, MessageAuthor, MessageReference};
 pub use poll::{Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};

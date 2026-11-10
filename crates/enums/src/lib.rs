@@ -10,6 +10,7 @@ mod components;
 mod embed;
 mod guild;
 mod intents;
+mod interaction;
 mod member_flags;
 mod message;
 mod permissions;
@@ -23,6 +24,10 @@ pub use components::{ButtonStyle, ComponentType, SelectDefaultValueType, TextSty
 pub use embed::{EmbedFlags, EmbedType};
 pub use guild::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
 pub use intents::Intents;
+pub use interaction::{
+    ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
+    InteractionContextType, InteractionResponseType, InteractionType,
+};
 pub use member_flags::MemberFlags;
 pub use message::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType, ReactionType};
 pub use permissions::Permissions;

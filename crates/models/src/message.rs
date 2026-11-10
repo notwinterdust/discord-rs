@@ -1,9 +1,8 @@
 //! Message models.
 //!
 //! This module currently covers core message data: authors, attachments,
-//! components, embeds, polls, reactions, stickers, message references and the
-//! message envelope itself. Interaction metadata will be added with its own
-//! models.
+//! components, embeds, interactions, polls, reactions, stickers, message
+//! references and the message envelope itself.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -12,7 +11,10 @@ use std::time::SystemTime;
 use abc::{HasId, Snowflake};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
-use crate::{ActionRow, Embed, Member, Poll, Reaction, StickerItem, User};
+use crate::{
+    ActionRow, Embed, Member, MessageInteraction, MessageInteractionMetadata, Poll, Reaction,
+    StickerItem, User,
+};
 
 /// The author of a message.
 ///
@@ -473,6 +475,10 @@ pub struct Message {
     pub webhook_id: Option<Snowflake>,
     /// The ID of the application that created the message, if any.
     pub application_id: Option<Snowflake>,
+    /// The interaction that this message is a response to, if any.
+    pub interaction: Option<MessageInteraction>,
+    /// Detailed metadata for the interaction that created this message, if any.
+    pub interaction_metadata: Option<MessageInteractionMetadata>,
     /// The approximate position of the message in a thread, if known.
     pub position: Option<i64>,
     /// The nonce used when sending the message, if known.
@@ -506,6 +512,8 @@ impl Default for Message {
             reference: None,
             webhook_id: None,
             application_id: None,
+            interaction: None,
+            interaction_metadata: None,
             position: None,
             nonce: None,
         }
@@ -688,6 +696,20 @@ impl Message {
         self
     }
 
+    /// Sets the interaction that this message is a response to.
+    #[must_use]
+    pub fn with_interaction(mut self, interaction: MessageInteraction) -> Self {
+        self.interaction = Some(interaction);
+        self
+    }
+
+    /// Sets detailed interaction metadata for this message.
+    #[must_use]
+    pub fn with_interaction_metadata(mut self, metadata: MessageInteractionMetadata) -> Self {
+        self.interaction_metadata = Some(metadata);
+        self
+    }
+
     /// Sets the message's approximate position in a thread.
     #[must_use]
     pub fn with_position(mut self, position: i64) -> Self {
@@ -796,12 +818,15 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use abc::{HasId, Snowflake};
-    use enums::{AttachmentFlags, ButtonStyle, MessageFlags, MessageReferenceType, MessageType};
+    use enums::{
+        AttachmentFlags, ButtonStyle, InteractionType, MessageFlags, MessageReferenceType,
+        MessageType,
+    };
 
     use super::{Attachment, Message, MessageAuthor, MessageReference};
     use crate::{
-        ActionRow, Button, Embed, Member, PartialEmoji, Poll, PollAnswer, Reaction, StickerItem,
-        User,
+        ActionRow, Button, Embed, Member, MessageInteraction, MessageInteractionMetadata,
+        PartialEmoji, Poll, PollAnswer, Reaction, StickerItem, User,
     };
 
     #[test]
@@ -1043,6 +1068,31 @@ mod tests {
         assert_eq!(
             message.poll.as_ref().map(|poll| poll.answers().len()),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn message_interactions_are_stored() {
+        let user = User::new(1_u64, "winter");
+        let interaction = MessageInteraction::new(
+            30_u64,
+            InteractionType::ApplicationCommand,
+            "greet",
+            user.clone(),
+        );
+        let metadata =
+            MessageInteractionMetadata::new(31_u64, InteractionType::ApplicationCommand, user);
+        let message = Message::new(10_u64, 20_u64, User::new(2_u64, "author"))
+            .with_interaction(interaction)
+            .with_interaction_metadata(metadata);
+
+        assert_eq!(
+            message.interaction.as_ref().map(|value| value.id),
+            Some(Snowflake::new(30))
+        );
+        assert_eq!(
+            message.interaction_metadata.as_ref().map(|value| value.id),
+            Some(Snowflake::new(31))
         );
     }
 
