@@ -100,6 +100,24 @@ impl ChannelType {
         )
     }
 
+    /// Returns `true` if this is a thread created from an announcement channel.
+    #[must_use]
+    pub const fn is_news_thread(self) -> bool {
+        matches!(self, Self::NewsThread)
+    }
+
+    /// Returns `true` if this is a public thread.
+    #[must_use]
+    pub const fn is_public_thread(self) -> bool {
+        matches!(self, Self::PublicThread)
+    }
+
+    /// Returns `true` if this is a private thread.
+    #[must_use]
+    pub const fn is_private_thread(self) -> bool {
+        matches!(self, Self::PrivateThread)
+    }
+
     /// Returns `true` if this type can contain text messages or threads.
     #[must_use]
     pub const fn is_textual(self) -> bool {
@@ -510,7 +528,11 @@ mod tests {
         assert!(ChannelType::Private.is_dm());
         assert!(ChannelType::Group.is_dm());
         assert!(ChannelType::PublicThread.is_thread());
+        assert!(ChannelType::NewsThread.is_news_thread());
+        assert!(ChannelType::PublicThread.is_public_thread());
+        assert!(ChannelType::PrivateThread.is_private_thread());
         assert!(!ChannelType::Text.is_thread());
+        assert!(!ChannelType::NewsThread.is_public_thread());
         assert!(ChannelType::Forum.is_textual());
         assert!(ChannelType::Media.is_textual());
         assert!(!ChannelType::Voice.is_textual());

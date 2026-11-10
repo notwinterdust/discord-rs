@@ -13,7 +13,7 @@ use enums::{
     ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, Permissions, VideoQualityMode,
 };
 
-use crate::{Guild, Member, Role};
+use crate::{Guild, Member, Role, ThreadInfo, ThreadMember, ThreadMetadata};
 
 /// The target kind of a channel permission overwrite.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -257,8 +257,9 @@ impl PermissionOverwriteEntry {
 /// A guild channel.
 ///
 /// This is a unified model for text, voice, category, announcement, stage,
-/// forum and media channels. Fields that do not apply to the channel's
-/// [`ChannelType`] keep their defaults.
+/// forum, media and thread channels. Fields that do not apply to the channel's
+/// [`ChannelType`] keep their defaults. Thread-specific state is stored in
+/// [`GuildChannel::thread`].
 ///
 /// Equality and hashing are based on the channel's ID.
 #[derive(Clone, Debug)]
@@ -305,6 +306,8 @@ pub struct GuildChannel {
     pub default_layout: ForumLayout,
     /// The forum's default sort order.
     pub default_sort_order: ForumSortOrder,
+    /// Thread-specific state, for thread channels.
+    pub thread: Option<ThreadInfo>,
 }
 
 impl Default for GuildChannel {
@@ -331,6 +334,7 @@ impl Default for GuildChannel {
             status: None,
             default_layout: ForumLayout::default(),
             default_sort_order: ForumSortOrder::default(),
+            thread: None,
         }
     }
 }
@@ -472,6 +476,13 @@ impl GuildChannel {
         self
     }
 
+    /// Sets the thread-specific state for a thread channel.
+    #[must_use]
+    pub fn with_thread_info(mut self, thread: ThreadInfo) -> Self {
+        self.thread = Some(thread);
+        self
+    }
+
     /// Returns the channel's type.
     #[must_use]
     pub const fn channel_type(&self) -> ChannelType {
@@ -524,6 +535,100 @@ impl GuildChannel {
     #[must_use]
     pub const fn is_thread(&self) -> bool {
         self.channel_type.is_thread()
+    }
+
+    /// Returns `true` if the channel is a thread created from an announcement
+    /// channel.
+    #[must_use]
+    pub const fn is_news_thread(&self) -> bool {
+        self.channel_type.is_news_thread()
+    }
+
+    /// Returns `true` if the channel is a public thread.
+    #[must_use]
+    pub const fn is_public_thread(&self) -> bool {
+        self.channel_type.is_public_thread()
+    }
+
+    /// Returns `true` if the channel is a private thread.
+    #[must_use]
+    pub const fn is_private_thread(&self) -> bool {
+        self.channel_type.is_private_thread()
+    }
+
+    /// Returns the channel's thread-specific state, if it is a thread.
+    #[must_use]
+    pub const fn thread_info(&self) -> Option<&ThreadInfo> {
+        self.thread.as_ref()
+    }
+
+    /// Returns mutable access to the channel's thread-specific state.
+    pub fn thread_info_mut(&mut self) -> Option<&mut ThreadInfo> {
+        self.thread.as_mut()
+    }
+
+    /// Returns the thread's archive metadata, if it is a thread.
+    #[must_use]
+    pub fn thread_metadata(&self) -> Option<&ThreadMetadata> {
+        self.thread.as_ref().map(|thread| &thread.metadata)
+    }
+
+    /// Returns the thread's cached members, or an empty slice for non-threads.
+    #[must_use]
+    pub fn thread_members(&self) -> &[ThreadMember] {
+        self.thread
+            .as_ref()
+            .map_or(&[], |thread| thread.members.as_slice())
+    }
+
+    /// Returns a thread member by user ID, if it is cached.
+    #[must_use]
+    pub fn thread_member(&self, user_id: impl Into<Snowflake>) -> Option<&ThreadMember> {
+        self.thread
+            .as_ref()
+            .and_then(|thread| thread.member(user_id))
+    }
+
+    /// Returns the thread's parent channel ID, if it is a thread.
+    #[must_use]
+    pub fn thread_parent_id(&self) -> Option<Snowflake> {
+        self.thread.as_ref().map(|thread| thread.parent_id)
+    }
+
+    /// Returns the thread owner's user ID, if it is a thread.
+    #[must_use]
+    pub fn thread_owner_id(&self) -> Option<Snowflake> {
+        self.thread.as_ref().map(|thread| thread.owner_id)
+    }
+
+    /// Returns `true` if the thread is archived.
+    #[must_use]
+    pub fn is_archived(&self) -> bool {
+        self.thread.as_ref().is_some_and(ThreadInfo::is_archived)
+    }
+
+    /// Returns `true` if the thread is locked.
+    #[must_use]
+    pub fn is_locked(&self) -> bool {
+        self.thread.as_ref().is_some_and(ThreadInfo::is_locked)
+    }
+
+    /// Returns `true` if non-moderators can invite other non-moderators.
+    #[must_use]
+    pub fn is_invitable(&self) -> bool {
+        self.thread.as_ref().is_some_and(ThreadInfo::is_invitable)
+    }
+
+    /// Returns the thread's parent channel, if it is cached.
+    #[must_use]
+    pub fn thread_parent<'a>(&self, guild: &'a Guild) -> Option<&'a GuildChannel> {
+        if !self.is_thread() {
+            return None;
+        }
+
+        self.thread
+            .as_ref()
+            .and_then(|thread| guild.get_channel(thread.parent_id))
     }
 
     /// Returns `true` if the channel is age-restricted.
@@ -617,8 +722,16 @@ impl GuildChannel {
     }
 
     /// Returns the category this channel belongs to, if it is cached.
+    ///
+    /// Threads inherit the category of their parent channel.
     #[must_use]
     pub fn category<'a>(&self, guild: &'a Guild) -> Option<&'a GuildChannel> {
+        if self.is_thread() {
+            return self
+                .thread_parent(guild)
+                .and_then(|parent| parent.category(guild));
+        }
+
         self.category_id
             .and_then(|category_id| guild.get_channel(category_id))
             .filter(|channel| channel.is_category())
@@ -640,6 +753,10 @@ impl GuildChannel {
     /// Resolves the permissions a role would have in this channel.
     #[must_use]
     pub fn permissions_for_role(&self, guild: &Guild, role: &Role) -> Permissions {
+        if let Some(parent) = self.thread_parent(guild) {
+            return apply_thread_permissions(parent.permissions_for_role(guild, role));
+        }
+
         let mut base = self.base_permissions_for_role(guild, role);
 
         if base.administrator() {
@@ -662,6 +779,10 @@ impl GuildChannel {
     /// Resolves the permissions a member would have in this channel.
     #[must_use]
     pub fn permissions_for(&self, guild: &Guild, member: &Member) -> Permissions {
+        if let Some(parent) = self.thread_parent(guild) {
+            return apply_thread_permissions(parent.permissions_for(guild, member));
+        }
+
         let mut base = self.base_permissions_for_member(guild, member);
 
         if guild.is_owner(member.id()) || base.administrator() {
@@ -759,6 +880,23 @@ fn apply_overwrite_pair(base: Permissions, allow: Permissions, deny: Permissions
     base.difference(deny).union(allow)
 }
 
+fn apply_thread_permissions(mut base: Permissions) -> Permissions {
+    if !base.contains(Permissions::SEND_MESSAGES_IN_THREADS) {
+        base.remove(
+            Permissions::SEND_TTS_MESSAGES
+                | Permissions::MENTION_EVERYONE
+                | Permissions::EMBED_LINKS
+                | Permissions::ATTACH_FILES,
+        );
+    }
+
+    if !base.contains(Permissions::VIEW_CHANNEL) {
+        base = base.difference(Permissions::all_channel());
+    }
+
+    base
+}
+
 fn apply_implicit_permissions(mut base: Permissions) -> Permissions {
     if !base.send_messages() {
         base.remove(
@@ -816,7 +954,7 @@ mod tests {
     use super::{
         GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
     };
-    use crate::{Guild, Member, Role, User};
+    use crate::{Guild, Member, Role, ThreadInfo, ThreadMember, ThreadMetadata, User};
 
     fn role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
         Role::new(guild_id, id, name).with_position(position)
@@ -1104,6 +1242,84 @@ mod tests {
         let permissions = channel.permissions_for(&guild, member);
         assert!(permissions.administrator());
         assert!(permissions.manage_guild());
+    }
+
+    #[test]
+    fn thread_channels_expose_state_and_inherit_permissions() {
+        let timestamp = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let category = GuildChannel::new(90_u64, 100_u64, "category", ChannelType::Category);
+        let parent = GuildChannel::new(10_u64, 100_u64, "general", ChannelType::Text)
+            .with_category_id(90_u64)
+            .with_permission_overwrites(vec![PermissionOverwriteEntry::role(
+                Snowflake::new(20),
+                PermissionOverwrite::from_pair(Permissions::none(), Permissions::SEND_MESSAGES),
+            )]);
+        let member =
+            ThreadMember::new(2_u64, 11_u64, timestamp).with_flags(enums::ThreadMemberFlags::IN);
+        let info = ThreadInfo::new(10_u64, 1_u64)
+            .with_metadata(
+                ThreadMetadata::new(ThreadMetadata::ONE_HOUR, timestamp)
+                    .with_archived(true)
+                    .with_locked(true),
+            )
+            .with_counts(3, 1)
+            .with_members(vec![member.clone()]);
+        let thread = GuildChannel::new(11_u64, 100_u64, "topic", ChannelType::PublicThread)
+            .with_thread_info(info);
+
+        let guild = sample_guild().with_channels(vec![category, parent, thread]);
+        let thread = guild.get_channel(11_u64).unwrap();
+
+        assert!(thread.is_thread());
+        assert!(thread.is_public_thread());
+        assert!(!thread.is_private_thread());
+        assert!(!thread.is_news_thread());
+        assert_eq!(thread.thread_parent_id(), Some(Snowflake::new(10)));
+        assert_eq!(thread.thread_owner_id(), Some(Snowflake::new(1)));
+        assert!(thread.is_archived());
+        assert!(thread.is_locked());
+        assert!(thread.is_invitable());
+        assert_eq!(thread.thread_members(), &[member]);
+        assert_eq!(
+            thread.thread_member(2_u64).map(|member| member.joined_at),
+            Some(timestamp)
+        );
+        assert!(thread.thread_member(3_u64).is_none());
+        assert_eq!(
+            thread.thread_parent(&guild).map(|parent| parent.id),
+            Some(Snowflake::new(10))
+        );
+        assert_eq!(
+            thread.category(&guild).map(|category| category.id),
+            Some(Snowflake::new(90))
+        );
+        assert_eq!(
+            thread
+                .thread_metadata()
+                .map(|metadata| metadata.auto_archive_duration),
+            Some(ThreadMetadata::ONE_HOUR)
+        );
+
+        let member = guild.get_member(2_u64).unwrap();
+        let permissions = thread.permissions_for(&guild, member);
+        assert!(permissions.view_channel());
+        assert!(!permissions.send_messages());
+        assert!(!permissions.embed_links());
+
+        let role = guild.get_role(20_u64).unwrap();
+        let permissions = thread.permissions_for_role(&guild, role);
+        assert!(permissions.view_channel());
+        assert!(!permissions.send_messages());
+
+        let plain = GuildChannel::new(12_u64, 100_u64, "plain", ChannelType::Text);
+        assert!(!plain.is_archived());
+        assert!(!plain.is_locked());
+        assert!(!plain.is_invitable());
+        assert!(plain.thread_members().is_empty());
+        assert!(plain.thread_info().is_none());
+        assert_eq!(plain.thread_parent(&guild), None);
+        assert_eq!(plain.thread_parent_id(), None);
+        assert_eq!(plain.thread_owner_id(), None);
     }
 
     #[test]

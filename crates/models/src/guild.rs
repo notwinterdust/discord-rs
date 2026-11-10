@@ -1,7 +1,8 @@
 //! The `Guild` model.
 //!
-//! Guilds own roles and members. Until the channel and message models exist,
-//! this type focuses on guild identity, settings, roles and members.
+//! Guilds own roles, members, channels, threads and stickers. Channel and
+//! thread state is cached in [`Guild::channels`]; thread channels additionally
+//! carry thread-specific data on [`GuildChannel`](crate::GuildChannel).
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -574,6 +575,28 @@ impl Guild {
         self.channels_of_type(ChannelType::Category)
     }
 
+    /// Returns every cached thread channel.
+    pub fn threads(&self) -> impl Iterator<Item = &GuildChannel> {
+        self.channels.iter().filter(|channel| channel.is_thread())
+    }
+
+    /// Returns the cached thread with the given ID, if it is a thread.
+    #[must_use]
+    pub fn get_thread(&self, thread_id: impl Into<Snowflake>) -> Option<&GuildChannel> {
+        self.get_channel(thread_id)
+            .filter(|channel| channel.is_thread())
+    }
+
+    /// Returns every cached thread whose parent is the given channel.
+    pub fn threads_in(
+        &self,
+        parent_id: impl Into<Snowflake>,
+    ) -> impl Iterator<Item = &GuildChannel> {
+        let parent_id = parent_id.into();
+        self.threads()
+            .filter(move |thread| thread.thread_parent_id() == Some(parent_id))
+    }
+
     /// Returns the guild's AFK channel, if it is cached.
     #[must_use]
     pub fn afk_channel(&self) -> Option<&GuildChannel> {
@@ -748,7 +771,7 @@ mod tests {
     use enums::{ChannelType, Permissions, VerificationLevel};
 
     use super::Guild;
-    use crate::{GuildChannel, Member, Role, RoleTags, Sticker, User};
+    use crate::{GuildChannel, Member, Role, RoleTags, Sticker, ThreadInfo, User};
 
     fn sample_role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
         Role::new(guild_id, id, name).with_position(position)
@@ -1030,6 +1053,32 @@ mod tests {
         assert!(guild.rules_channel().is_none());
         assert!(guild.public_updates_channel().is_none());
         assert!(guild.safety_alerts_channel().is_none());
+    }
+
+    #[test]
+    fn cached_threads_are_queryable() {
+        let thread = |id: u64, parent: u64, kind: ChannelType| {
+            GuildChannel::new(id, 100_u64, format!("thread-{id}"), kind)
+                .with_thread_info(ThreadInfo::new(parent, 1_u64))
+        };
+        let guild = Guild::new(100_u64, "Test").with_channels(vec![
+            GuildChannel::new(10_u64, 100_u64, "General", ChannelType::Text),
+            thread(11_u64, 10_u64, ChannelType::PublicThread),
+            thread(12_u64, 10_u64, ChannelType::PrivateThread),
+            thread(13_u64, 20_u64, ChannelType::NewsThread),
+        ]);
+
+        assert_eq!(guild.threads().count(), 3);
+        assert_eq!(guild.threads_in(10_u64).count(), 2);
+        assert_eq!(guild.threads_in(20_u64).count(), 1);
+        assert_eq!(guild.threads_in(99_u64).count(), 0);
+        assert_eq!(
+            guild.get_thread(11_u64).map(|thread| thread.name.as_str()),
+            Some("thread-11")
+        );
+        assert!(guild.get_thread(10_u64).is_none());
+        assert!(guild.get_thread(99_u64).is_none());
+        assert!(guild.get_channel(11_u64).is_some());
     }
 
     #[test]
