@@ -19,6 +19,7 @@ mod public_user_flags;
 mod role_flags;
 mod sticker;
 mod thread;
+mod webhook;
 
 pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQualityMode};
 pub use components::{ButtonStyle, ComponentType, SelectDefaultValueType, TextStyle};
@@ -37,3 +38,4 @@ pub use public_user_flags::PublicUserFlags;
 pub use role_flags::RoleFlags;
 pub use sticker::{StickerFormatType, StickerType};
 pub use thread::ThreadMemberFlags;
+pub use webhook::WebhookType;

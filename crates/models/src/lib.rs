@@ -3,8 +3,8 @@
 //! This crate will grow to contain `User`, `Guild`, `Channel`, `Message` and
 //! the rest of Discord's API models. It currently covers guilds, guild
 //! channels, permission overwrites, messages, components, embeds, forum tags,
-//! interactions, reactions, emojis, stickers, polls, threads, users, client
-//! users, guild roles and guild members.
+//! interactions, reactions, emojis, stickers, polls, threads, webhooks, users,
+//! client users, guild roles and guild members.
 
 #![forbid(unsafe_code)]
 
@@ -24,6 +24,7 @@ mod role;
 mod sticker;
 mod thread;
 mod user;
+mod webhook;
 
 pub use abc::{Asset, Color, Colour, HasId, Snowflake};
 pub use channel::{
@@ -45,7 +46,7 @@ pub use enums::{
     InteractionResponseType, InteractionType, MemberFlags, MessageFlags, MessageReferenceType,
     MessageType, MfaLevel, NotificationLevel, NsfwLevel, Permissions, PollLayoutType,
     PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
-    StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode,
+    StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode, WebhookType,
 };
 pub use forum::ForumTag;
 pub use guild::Guild;
@@ -64,3 +65,4 @@ pub use role::{Role, RoleIcon, RoleTags};
 pub use sticker::{Sticker, StickerItem, StickerPack};
 pub use thread::{ThreadInfo, ThreadMember, ThreadMetadata};
 pub use user::User;
+pub use webhook::{PartialWebhookChannel, PartialWebhookGuild, Webhook, WebhookMessage};
