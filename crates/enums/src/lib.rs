@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod channel;
+mod embed;
 mod guild;
 mod intents;
 mod member_flags;
@@ -15,6 +16,7 @@ mod public_user_flags;
 mod role_flags;
 
 pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQualityMode};
+pub use embed::{EmbedFlags, EmbedType};
 pub use guild::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
 pub use intents::Intents;
 pub use member_flags::MemberFlags;

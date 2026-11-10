@@ -1,8 +1,8 @@
 //! Message models.
 //!
 //! This module currently covers core message data: authors, attachments,
-//! message references and the message envelope itself. Embeds, reactions,
-//! stickers, components, polls and interaction metadata will be added with
+//! embeds, reactions, message references and the message envelope itself.
+//! Stickers, components, polls and interaction metadata will be added with
 //! their own models.
 
 use std::fmt;
@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use abc::{HasId, Snowflake};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
-use crate::{Member, Reaction, User};
+use crate::{Embed, Member, Reaction, User};
 
 /// The author of a message.
 ///
@@ -457,6 +457,8 @@ pub struct Message {
     pub mention_channel_ids: Vec<Snowflake>,
     /// The message's attachments.
     pub attachments: Vec<Attachment>,
+    /// The message's embeds.
+    pub embeds: Vec<Embed>,
     /// The message's reactions.
     pub reactions: Vec<Reaction>,
     /// The message this message references, if any.
@@ -490,6 +492,7 @@ impl Default for Message {
             mention_role_ids: Vec::new(),
             mention_channel_ids: Vec::new(),
             attachments: Vec::new(),
+            embeds: Vec::new(),
             reactions: Vec::new(),
             reference: None,
             webhook_id: None,
@@ -609,6 +612,13 @@ impl Message {
     #[must_use]
     pub fn with_attachments(mut self, attachments: Vec<Attachment>) -> Self {
         self.attachments = attachments;
+        self
+    }
+
+    /// Sets the message's embeds.
+    #[must_use]
+    pub fn with_embeds(mut self, embeds: Vec<Embed>) -> Self {
+        self.embeds = embeds;
         self
     }
 
@@ -759,7 +769,7 @@ mod tests {
     use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
     use super::{Attachment, Message, MessageAuthor, MessageReference};
-    use crate::{Member, PartialEmoji, Reaction, User};
+    use crate::{Embed, Member, PartialEmoji, Reaction, User};
 
     #[test]
     fn attachment_builders_and_helpers() {
@@ -950,6 +960,18 @@ mod tests {
             Some(3)
         );
         assert!(message.reaction(&PartialEmoji::unicode("🎊")).is_none());
+    }
+
+    #[test]
+    fn message_embeds_are_stored() {
+        let embed = Embed::new()
+            .with_title("Title")
+            .with_description("Description");
+        let message =
+            Message::new(10_u64, 20_u64, User::new(1_u64, "winter")).with_embeds(vec![embed]);
+
+        assert_eq!(message.embeds.len(), 1);
+        assert_eq!(message.embeds[0].title.as_deref(), Some("Title"));
     }
 
     #[test]
