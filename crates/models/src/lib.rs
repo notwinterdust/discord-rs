@@ -1,13 +1,14 @@
 //! Discord API models.
 //!
 //! This crate will grow to contain `User`, `Guild`, `Channel`, `Message` and
-//! the rest of Discord's API models. It currently covers guilds, guild
-//! channels, permission overwrites, messages, components, embeds, forum tags,
-//! interactions, reactions, emojis, stickers, polls, threads, webhooks, users,
-//! client users, guild roles and guild members.
+//! the rest of Discord's API models. It currently covers applications, guilds,
+//! guild channels, permission overwrites, invites, messages, components,
+//! embeds, forum tags, interactions, reactions, emojis, stickers, polls,
+//! threads, webhooks, users, client users, guild roles and guild members.
 
 #![forbid(unsafe_code)]
 
+mod application;
 mod channel;
 mod client_user;
 mod components;
@@ -16,6 +17,7 @@ mod emoji;
 mod forum;
 mod guild;
 mod interaction;
+mod invite;
 mod member;
 mod message;
 mod poll;
@@ -27,6 +29,7 @@ mod user;
 mod webhook;
 
 pub use abc::{Asset, Color, Colour, HasId, Snowflake};
+pub use application::PartialApplication;
 pub use channel::{
     GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
 };
@@ -43,10 +46,11 @@ pub use enums::{
     ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
     AttachmentFlags, ButtonStyle, ChannelFlags, ChannelType, ComponentType, ContentFilter,
     EmbedFlags, EmbedType, ForumLayout, ForumSortOrder, InteractionContextType,
-    InteractionResponseType, InteractionType, MemberFlags, MessageFlags, MessageReferenceType,
-    MessageType, MfaLevel, NotificationLevel, NsfwLevel, Permissions, PollLayoutType,
-    PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
-    StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode, WebhookType,
+    InteractionResponseType, InteractionType, InviteFlags, InviteTarget, InviteType, MemberFlags,
+    MessageFlags, MessageReferenceType, MessageType, MfaLevel, NotificationLevel, NsfwLevel,
+    Permissions, PollLayoutType, PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType,
+    StickerFormatType, StickerType, TextStyle, ThreadMemberFlags, VerificationLevel,
+    VideoQualityMode, WebhookType,
 };
 pub use forum::ForumTag;
 pub use guild::Guild;
@@ -57,6 +61,7 @@ pub use interaction::{
     MessageComponentData, MessageInteraction, MessageInteractionMetadata, ModalResponseData,
     ModalSubmitComponent, ModalSubmitData, ResolvedData,
 };
+pub use invite::{Invite, InviteChannel, InviteGuild, PartialInviteChannel, PartialInviteGuild};
 pub use member::Member;
 pub use message::{Attachment, Message, MessageAuthor, MessageReference};
 pub use poll::{Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};

@@ -11,6 +11,7 @@ mod embed;
 mod guild;
 mod intents;
 mod interaction;
+mod invite;
 mod member_flags;
 mod message;
 mod permissions;
@@ -30,6 +31,7 @@ pub use interaction::{
     ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
     InteractionContextType, InteractionResponseType, InteractionType,
 };
+pub use invite::{InviteFlags, InviteTarget, InviteType};
 pub use member_flags::MemberFlags;
 pub use message::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType, ReactionType};
 pub use permissions::Permissions;

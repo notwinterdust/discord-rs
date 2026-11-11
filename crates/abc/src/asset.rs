@@ -231,6 +231,28 @@ impl Asset {
         )
     }
 
+    /// Creates an application's icon.
+    #[must_use]
+    pub fn from_application_icon(application_id: Snowflake, icon_hash: &str) -> Self {
+        Self::new(
+            format!("{CDN_BASE}/app-icons/{application_id}/{icon_hash}.png?size=1024"),
+            icon_hash,
+            false,
+        )
+    }
+
+    /// Creates an application's store cover image.
+    #[must_use]
+    pub fn from_application_cover_image(application_id: Snowflake, cover_image_hash: &str) -> Self {
+        Self::new(
+            format!(
+                "{CDN_BASE}/app-assets/{application_id}/store/{cover_image_hash}.png?size=1024"
+            ),
+            cover_image_hash,
+            false,
+        )
+    }
+
     /// Returns the underlying CDN URL.
     #[must_use]
     pub fn url(&self) -> &str {
@@ -425,6 +447,25 @@ mod tests {
         );
         assert_eq!(asset.key(), "42");
         assert!(!asset.is_animated());
+    }
+
+    #[test]
+    fn application_asset_urls() {
+        let application_id = Snowflake::new(123456789012345678);
+
+        let icon = Asset::from_application_icon(application_id, "abc123");
+        assert_eq!(
+            icon.url(),
+            "https://cdn.discordapp.com/app-icons/123456789012345678/abc123.png?size=1024"
+        );
+        assert_eq!(icon.key(), "abc123");
+        assert!(!icon.is_animated());
+
+        let cover = Asset::from_application_cover_image(application_id, "cover123");
+        assert_eq!(
+            cover.url(),
+            "https://cdn.discordapp.com/app-assets/123456789012345678/store/cover123.png?size=1024"
+        );
     }
 
     #[test]
