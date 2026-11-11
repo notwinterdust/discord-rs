@@ -455,6 +455,18 @@ impl From<i64> for Value {
     }
 }
 
+impl From<i8> for Value {
+    fn from(value: i8) -> Self {
+        Self::Number(Number::Integer(i64::from(value)))
+    }
+}
+
+impl From<i16> for Value {
+    fn from(value: i16) -> Self {
+        Self::Number(Number::Integer(i64::from(value)))
+    }
+}
+
 impl From<i32> for Value {
     fn from(value: i32) -> Self {
         Self::Number(Number::Integer(i64::from(value)))
@@ -464,6 +476,18 @@ impl From<i32> for Value {
 impl From<u64> for Value {
     fn from(value: u64) -> Self {
         Self::Number(Number::Unsigned(value))
+    }
+}
+
+impl From<u8> for Value {
+    fn from(value: u8) -> Self {
+        Self::Number(Number::Unsigned(u64::from(value)))
+    }
+}
+
+impl From<u16> for Value {
+    fn from(value: u16) -> Self {
+        Self::Number(Number::Unsigned(u64::from(value)))
     }
 }
 
