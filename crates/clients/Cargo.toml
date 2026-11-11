@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+data = { path = "../data" }
+enums = { path = "../enums" }
 except = { path = "../except" }
 util = { path = "../util" }
 version = { path = "../version" }
