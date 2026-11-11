@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+mod audit_log;
 mod channel;
 mod components;
 mod embed;
@@ -23,6 +24,7 @@ mod sticker;
 mod thread;
 mod webhook;
 
+pub use audit_log::{AuditLogAction, AuditLogActionCategory, AuditLogActionTargetType};
 pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQualityMode};
 pub use components::{ButtonStyle, ComponentType, SelectDefaultValueType, TextStyle};
 pub use embed::{EmbedFlags, EmbedType};

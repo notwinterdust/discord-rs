@@ -1,15 +1,16 @@
 //! Discord API models.
 //!
 //! This crate will grow to contain `User`, `Guild`, `Channel`, `Message` and
-//! the rest of Discord's API models. It currently covers applications, guilds,
-//! guild channels, permission overwrites, invites, messages, components,
-//! embeds, forum tags, interactions, reactions, emojis, stickers, polls,
-//! scheduled events, threads, webhooks, users, client users, guild roles and
-//! guild members.
+//! the rest of Discord's API models. It currently covers applications, audit
+//! logs, guilds, guild channels, permission overwrites, invites, messages,
+//! components, embeds, forum tags, interactions, reactions, emojis, stickers,
+//! polls, scheduled events, threads, webhooks, users, client users, guild roles
+//! and guild members.
 
 #![forbid(unsafe_code)]
 
 mod application;
+mod audit_log;
 mod channel;
 mod client_user;
 mod components;
@@ -32,6 +33,10 @@ mod webhook;
 
 pub use abc::{Asset, Color, Colour, HasId, Snowflake};
 pub use application::PartialApplication;
+pub use audit_log::{
+    AuditLog, AuditLogChange, AuditLogChangeKey, AuditLogChangeValue, AuditLogEntry,
+    AuditLogEntryInfo, AuditLogEntryTarget,
+};
 pub use channel::{
     GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
 };
