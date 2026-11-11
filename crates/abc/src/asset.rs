@@ -253,6 +253,16 @@ impl Asset {
         )
     }
 
+    /// Creates a guild scheduled event's cover image.
+    #[must_use]
+    pub fn from_scheduled_event_cover_image(event_id: Snowflake, cover_image_hash: &str) -> Self {
+        Self::new(
+            format!("{CDN_BASE}/guild-events/{event_id}/{cover_image_hash}.png?size=1024"),
+            cover_image_hash,
+            false,
+        )
+    }
+
     /// Returns the underlying CDN URL.
     #[must_use]
     pub fn url(&self) -> &str {
@@ -466,6 +476,17 @@ mod tests {
             cover.url(),
             "https://cdn.discordapp.com/app-assets/123456789012345678/store/cover123.png?size=1024"
         );
+    }
+
+    #[test]
+    fn scheduled_event_cover_image_url() {
+        let asset = Asset::from_scheduled_event_cover_image(Snowflake::new(42), "cover123");
+        assert_eq!(
+            asset.url(),
+            "https://cdn.discordapp.com/guild-events/42/cover123.png?size=1024"
+        );
+        assert_eq!(asset.key(), "cover123");
+        assert!(!asset.is_animated());
     }
 
     #[test]

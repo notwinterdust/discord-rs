@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use abc::{Asset, HasId, Snowflake};
 use enums::{ChannelType, InviteFlags, InviteTarget, InviteType, NsfwLevel, VerificationLevel};
 
-use crate::{Guild, GuildChannel, PartialApplication, User};
+use crate::{Guild, GuildChannel, GuildScheduledEvent, PartialApplication, User};
 
 const INVITE_BASE: &str = "https://discord.gg";
 
@@ -516,6 +516,8 @@ pub struct Invite {
     pub target_application: Option<PartialApplication>,
     /// The ID of the scheduled event associated with the invite, if any.
     pub scheduled_event_id: Option<Snowflake>,
+    /// The scheduled event associated with the invite, if provided.
+    pub scheduled_event: Option<Box<GuildScheduledEvent>>,
     /// The approximate number of members in the guild, if known.
     pub approximate_member_count: Option<u64>,
     /// The approximate number of members currently active, if known.
@@ -601,6 +603,16 @@ impl Invite {
     #[must_use]
     pub fn with_scheduled_event_id(mut self, event_id: impl Into<Snowflake>) -> Self {
         self.scheduled_event_id = Some(event_id.into());
+        self
+    }
+
+    /// Sets the scheduled event associated with the invite.
+    ///
+    /// The invite's scheduled event ID is updated from the event.
+    #[must_use]
+    pub fn with_scheduled_event(mut self, event: GuildScheduledEvent) -> Self {
+        self.scheduled_event_id = Some(event.id);
+        self.scheduled_event = Some(Box::new(event));
         self
     }
 
@@ -752,7 +764,7 @@ mod tests {
     use enums::{ChannelType, InviteFlags, InviteTarget, InviteType, NsfwLevel, VerificationLevel};
 
     use super::{Invite, InviteChannel, InviteGuild, PartialInviteChannel, PartialInviteGuild};
-    use crate::{Guild, GuildChannel, PartialApplication, User};
+    use crate::{Guild, GuildChannel, GuildScheduledEvent, PartialApplication, User};
 
     #[test]
     fn partial_invite_models() {
@@ -867,6 +879,7 @@ mod tests {
         let inviter = User::new(1_u64, "inviter");
         let target_user = User::new(2_u64, "target");
         let application = PartialApplication::new(3_u64, "App");
+        let event = GuildScheduledEvent::new(30_u64, 20_u64, "Event", SystemTime::UNIX_EPOCH);
         let invite = Invite::new("abc")
             .with_type(InviteType::Guild)
             .with_guild(PartialInviteGuild::new(20_u64, "Guild"))
@@ -879,7 +892,7 @@ mod tests {
             .with_target_type(InviteTarget::Stream)
             .with_target_user(target_user.clone())
             .with_target_application(application.clone())
-            .with_scheduled_event_id(30_u64)
+            .with_scheduled_event(event)
             .with_approximate_counts(42, 7)
             .with_uses(5)
             .with_max_uses(10)
@@ -902,6 +915,13 @@ mod tests {
         assert_eq!(invite.target_user, Some(target_user));
         assert_eq!(invite.target_application, Some(application));
         assert_eq!(invite.scheduled_event_id, Some(Snowflake::new(30)));
+        assert_eq!(
+            invite
+                .scheduled_event
+                .as_deref()
+                .map(|event| event.name.as_str()),
+            Some("Event")
+        );
         assert_eq!(invite.approximate_member_count, Some(42));
         assert_eq!(invite.approximate_presence_count, Some(7));
         assert_eq!(invite.uses, Some(5));

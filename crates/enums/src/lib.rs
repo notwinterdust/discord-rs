@@ -18,6 +18,7 @@ mod permissions;
 mod poll;
 mod public_user_flags;
 mod role_flags;
+mod scheduled_event;
 mod sticker;
 mod thread;
 mod webhook;
@@ -25,7 +26,9 @@ mod webhook;
 pub use channel::{ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, VideoQualityMode};
 pub use components::{ButtonStyle, ComponentType, SelectDefaultValueType, TextStyle};
 pub use embed::{EmbedFlags, EmbedType};
-pub use guild::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
+pub use guild::{
+    ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, PrivacyLevel, VerificationLevel,
+};
 pub use intents::Intents;
 pub use interaction::{
     ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
@@ -38,6 +41,7 @@ pub use permissions::Permissions;
 pub use poll::PollLayoutType;
 pub use public_user_flags::PublicUserFlags;
 pub use role_flags::RoleFlags;
+pub use scheduled_event::{GuildScheduledEventEntityType, GuildScheduledEventStatus};
 pub use sticker::{StickerFormatType, StickerType};
 pub use thread::ThreadMemberFlags;
 pub use webhook::WebhookType;

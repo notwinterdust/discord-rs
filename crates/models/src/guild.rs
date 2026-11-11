@@ -1,8 +1,9 @@
 //! The `Guild` model.
 //!
-//! Guilds own roles, members, channels, threads and stickers. Channel and
-//! thread state is cached in [`Guild::channels`]; thread channels additionally
-//! carry thread-specific data on [`GuildChannel`](crate::GuildChannel).
+//! Guilds own roles, members, channels, threads, stickers and scheduled
+//! events. Channel and thread state is cached in [`Guild::channels`]; thread
+//! channels additionally carry thread-specific data on
+//! [`GuildChannel`](crate::GuildChannel).
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -14,7 +15,7 @@ use enums::{
     VerificationLevel,
 };
 
-use crate::{GuildChannel, Member, Role, Sticker};
+use crate::{GuildChannel, GuildScheduledEvent, Member, Role, Sticker};
 
 /// Represents a Discord guild (server).
 ///
@@ -45,6 +46,8 @@ pub struct Guild {
     pub channels: Vec<GuildChannel>,
     /// The guild's stickers.
     pub stickers: Vec<Sticker>,
+    /// The guild's cached scheduled events.
+    pub scheduled_events: Vec<GuildScheduledEvent>,
     /// The number of members in the guild, if known.
     pub member_count: Option<u64>,
     /// Whether the guild is unavailable.
@@ -117,6 +120,7 @@ impl Default for Guild {
             members: Vec::new(),
             channels: Vec::new(),
             stickers: Vec::new(),
+            scheduled_events: Vec::new(),
             member_count: None,
             unavailable: false,
             verification_level: VerificationLevel::default(),
@@ -253,6 +257,18 @@ impl Guild {
             }
         }
         self.stickers = stickers;
+        self
+    }
+
+    /// Sets the guild's cached scheduled events.
+    ///
+    /// Each event's guild ID is updated to match this guild.
+    #[must_use]
+    pub fn with_scheduled_events(mut self, mut events: Vec<GuildScheduledEvent>) -> Self {
+        for event in &mut events {
+            event.guild_id = self.id;
+        }
+        self.scheduled_events = events;
         self
     }
 
@@ -521,6 +537,35 @@ impl Guild {
             .find(|sticker| sticker.id == sticker_id)
     }
 
+    /// Returns the guild's cached scheduled events.
+    #[must_use]
+    pub fn scheduled_events(&self) -> &[GuildScheduledEvent] {
+        &self.scheduled_events
+    }
+
+    /// Returns the scheduled event with the given ID, if it is cached.
+    #[must_use]
+    pub fn get_scheduled_event(
+        &self,
+        event_id: impl Into<Snowflake>,
+    ) -> Option<&GuildScheduledEvent> {
+        let event_id = event_id.into();
+        self.scheduled_events
+            .iter()
+            .find(|event| event.id == event_id)
+    }
+
+    /// Returns every cached scheduled event held in the given channel.
+    pub fn scheduled_events_in(
+        &self,
+        channel_id: impl Into<Snowflake>,
+    ) -> impl Iterator<Item = &GuildScheduledEvent> {
+        let channel_id = channel_id.into();
+        self.scheduled_events
+            .iter()
+            .filter(move |event| event.channel_id == Some(channel_id))
+    }
+
     /// Returns the channel with the given ID, if it is cached.
     #[must_use]
     pub fn get_channel(&self, channel_id: impl Into<Snowflake>) -> Option<&GuildChannel> {
@@ -771,7 +816,9 @@ mod tests {
     use enums::{ChannelType, Permissions, VerificationLevel};
 
     use super::Guild;
-    use crate::{GuildChannel, Member, Role, RoleTags, Sticker, ThreadInfo, User};
+    use crate::{
+        GuildChannel, GuildScheduledEvent, Member, Role, RoleTags, Sticker, ThreadInfo, User,
+    };
 
     fn sample_role(guild_id: u64, id: u64, name: &str, position: i64) -> Role {
         Role::new(guild_id, id, name).with_position(position)
@@ -1079,6 +1126,34 @@ mod tests {
         assert!(guild.get_thread(10_u64).is_none());
         assert!(guild.get_thread(99_u64).is_none());
         assert!(guild.get_channel(11_u64).is_some());
+    }
+
+    #[test]
+    fn scheduled_events_are_queryable() {
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let events = vec![
+            GuildScheduledEvent::new(1_u64, 999_u64, "Stage", start).with_channel_id(10_u64),
+            GuildScheduledEvent::new(2_u64, 999_u64, "Voice", start).with_channel_id(10_u64),
+            GuildScheduledEvent::new(3_u64, 999_u64, "External", start),
+        ];
+        let guild = Guild::new(100_u64, "Test").with_scheduled_events(events);
+
+        assert_eq!(guild.scheduled_events().len(), 3);
+        assert!(
+            guild
+                .scheduled_events()
+                .iter()
+                .all(|event| event.guild_id == guild.id)
+        );
+        assert_eq!(
+            guild
+                .get_scheduled_event(2_u64)
+                .map(|event| event.name.as_str()),
+            Some("Voice")
+        );
+        assert!(guild.get_scheduled_event(99_u64).is_none());
+        assert_eq!(guild.scheduled_events_in(10_u64).count(), 2);
+        assert_eq!(guild.scheduled_events_in(99_u64).count(), 0);
     }
 
     #[test]

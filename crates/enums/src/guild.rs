@@ -247,9 +247,51 @@ impl fmt::Display for NsfwLevel {
     }
 }
 
+/// The privacy level of a guild scheduled event.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum PrivacyLevel {
+    /// The event is visible only to guild members.
+    #[default]
+    GuildOnly = 2,
+}
+
+impl PrivacyLevel {
+    /// Returns the raw API value.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
+
+    /// Converts a raw API value, returning `None` for unknown values.
+    #[must_use]
+    pub const fn from_value(value: u8) -> Option<Self> {
+        match value {
+            2 => Some(Self::GuildOnly),
+            _ => None,
+        }
+    }
+
+    /// Returns the lowercase name used by the API.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GuildOnly => "guild_only",
+        }
+    }
+}
+
+impl fmt::Display for PrivacyLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, VerificationLevel};
+    use super::{
+        ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, PrivacyLevel, VerificationLevel,
+    };
 
     #[test]
     fn values_round_trip() {
@@ -273,6 +315,8 @@ mod tests {
 
         assert_eq!(MfaLevel::from_value(2), None);
         assert_eq!(NsfwLevel::from_value(4), None);
+        assert_eq!(PrivacyLevel::from_value(2), Some(PrivacyLevel::GuildOnly));
+        assert_eq!(PrivacyLevel::from_value(1), None);
     }
 
     #[test]
@@ -282,5 +326,6 @@ mod tests {
         assert_eq!(ContentFilter::NoRole.to_string(), "no_role");
         assert_eq!(MfaLevel::Require2fa.to_string(), "require_2fa");
         assert_eq!(NsfwLevel::AgeRestricted.to_string(), "age_restricted");
+        assert_eq!(PrivacyLevel::GuildOnly.to_string(), "guild_only");
     }
 }
