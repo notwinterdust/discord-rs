@@ -10,8 +10,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, Colour, HasId, Snowflake};
+use data::Value;
 use enums::{MemberFlags, Permissions, PublicUserFlags};
 
+use crate::cast::{self, CastError};
 use crate::{Role, RoleIcon, User};
 
 /// Represents a Discord member of a guild.
@@ -57,6 +59,78 @@ impl Member {
             guild_id: guild_id.into(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a guild member from a Discord member object.
+    ///
+    /// Member payloads reference roles by ID, so the caller supplies the guild's
+    /// known roles. Unknown IDs become placeholder roles with only an ID and
+    /// the guild ID set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(
+        value: &Value,
+        guild_id: impl Into<Snowflake>,
+        roles: &[Role],
+    ) -> Result<Self, CastError> {
+        Self::from_value_at(value, "member", guild_id.into(), roles)
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+        roles: &[Role],
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let user_path = cast::field_path(path, "user");
+        let user = User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?;
+
+        let mut member_roles = Vec::new();
+        if let Some(role_ids) = cast::optional_array(object, path, "roles")? {
+            let roles_path = cast::field_path(path, "roles");
+            member_roles.reserve(role_ids.len());
+            for (index, value) in role_ids.iter().enumerate() {
+                let id = cast::snowflake(value, &cast::index_path(&roles_path, index))?;
+                let role = roles
+                    .iter()
+                    .find(|role| role.id == id)
+                    .cloned()
+                    .unwrap_or_else(|| Role::new(guild_id, id, ""));
+                member_roles.push(role);
+            }
+        }
+        member_roles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let guild_avatar = cast::optional_string(object, path, "avatar")?
+            .map(|hash| Asset::from_guild_avatar(guild_id, user.id, hash));
+        let guild_banner = cast::optional_string(object, path, "banner")?
+            .map(|hash| Asset::from_guild_banner(guild_id, user.id, hash));
+
+        Ok(Self {
+            user,
+            guild_id,
+            nick: cast::optional_string(object, path, "nick")?.map(str::to_owned),
+            roles: member_roles,
+            joined_at: cast::optional_timestamp(object, path, "joined_at")?,
+            premium_since: cast::optional_timestamp(object, path, "premium_since")?,
+            pending: cast::optional_bool(object, path, "pending", false)?,
+            deaf: cast::optional_bool(object, path, "deaf", false)?,
+            mute: cast::optional_bool(object, path, "mute", false)?,
+            flags: MemberFlags::from_bits(cast::optional_u64(object, path, "flags")?.unwrap_or(0)),
+            resolved_permissions: cast::optional_permission_bits(object, path, "permissions")?
+                .map(Permissions::from_bits),
+            guild_avatar,
+            guild_banner,
+            timed_out_until: cast::optional_timestamp(
+                object,
+                path,
+                "communication_disabled_until",
+            )?,
+        })
     }
 
     /// Sets the guild-specific nickname.
@@ -443,9 +517,10 @@ impl abc::User for Member {
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use abc::{Asset, Colour, HasId, Snowflake};
+    use data::json;
     use enums::{MemberFlags, Permissions, PublicUserFlags};
 
     use super::Member;
@@ -665,5 +740,138 @@ mod tests {
         );
         assert_eq!(UserTrait::mention(&member), "<@42>");
         assert_eq!(UserTrait::name(&member), "winter");
+    }
+
+    #[test]
+    fn decodes_a_full_member_payload() {
+        let value = json::from_str(
+            r#"{
+                "user": {
+                    "id": "42",
+                    "username": "winter",
+                    "global_name": "Winter",
+                    "bot": false
+                },
+                "nick": "Frost",
+                "roles": ["10", "20"],
+                "joined_at": "2021-08-01T12:34:56+00:00",
+                "premium_since": "2022-01-02T03:04:05.500Z",
+                "pending": true,
+                "deaf": true,
+                "mute": true,
+                "flags": 1,
+                "permissions": "8",
+                "avatar": "guildavatar",
+                "banner": "guildbanner",
+                "communication_disabled_until": "2023-01-01T00:00:00Z"
+            }"#,
+        )
+        .unwrap();
+
+        let roles = vec![
+            Role::new(100_u64, 20_u64, "Higher").with_position(2),
+            Role::new(100_u64, 10_u64, "Lower").with_position(1),
+        ];
+        let member = Member::from_value(&value, 100_u64, &roles).unwrap();
+
+        assert_eq!(member.user.id, Snowflake::new(42));
+        assert_eq!(member.guild_id, Snowflake::new(100));
+        assert_eq!(member.nick.as_deref(), Some("Frost"));
+        assert_eq!(member.roles.len(), 2);
+        assert_eq!(member.roles[0].name, "Lower");
+        assert_eq!(member.roles[1].name, "Higher");
+        assert_eq!(
+            member.joined_at,
+            Some(UNIX_EPOCH + Duration::new(1_627_821_296, 0))
+        );
+        assert_eq!(
+            member.premium_since,
+            Some(UNIX_EPOCH + Duration::new(1_641_092_645, 500_000_000))
+        );
+        assert!(member.pending);
+        assert!(member.deaf);
+        assert!(member.mute);
+        assert_eq!(member.flags, MemberFlags::DID_REJOIN);
+        assert_eq!(
+            member.resolved_permissions,
+            Some(Permissions::ADMINISTRATOR)
+        );
+        assert_eq!(
+            member.guild_avatar.as_ref().map(Asset::key),
+            Some("guildavatar")
+        );
+        assert_eq!(
+            member.guild_banner.as_ref().map(Asset::key),
+            Some("guildbanner")
+        );
+        assert_eq!(
+            member.timed_out_until,
+            Some(UNIX_EPOCH + Duration::new(1_672_531_200, 0))
+        );
+    }
+
+    #[test]
+    fn member_role_ids_resolve_against_supplied_roles() {
+        let value = json::from_str(
+            r#"{
+                "user": {"id": "42", "username": "winter"},
+                "roles": ["10", "999", "20"]
+            }"#,
+        )
+        .unwrap();
+        let roles = vec![
+            Role::new(100_u64, 10_u64, "Lower").with_position(1),
+            Role::new(100_u64, 20_u64, "Higher").with_position(2),
+        ];
+
+        let member = Member::from_value(&value, 100_u64, &roles).unwrap();
+
+        assert_eq!(member.roles.len(), 3);
+        assert_eq!(member.roles[0].id, Snowflake::new(999));
+        assert_eq!(member.roles[0].name, "");
+        assert_eq!(member.roles[0].guild_id, Snowflake::new(100));
+        assert_eq!(member.roles[1].id, Snowflake::new(10));
+        assert_eq!(member.roles[2].id, Snowflake::new(20));
+        assert_eq!(member.nick, None);
+        assert_eq!(member.joined_at, None);
+        assert_eq!(member.guild_avatar, None);
+    }
+
+    #[test]
+    fn decodes_minimal_members_and_reports_errors() {
+        let value = json::from_str(r#"{"user":{"id":"42","username":"winter"}}"#).unwrap();
+        let member = Member::from_value(&value, 100_u64, &[]).unwrap();
+        assert!(member.roles.is_empty());
+        assert!(!member.pending);
+        assert!(!member.deaf);
+        assert!(!member.mute);
+        assert_eq!(member.flags, MemberFlags::NONE);
+        assert_eq!(member.resolved_permissions, None);
+        assert_eq!(member.timed_out_until, None);
+
+        let missing_user = json::from_str(r#"{"nick":"Frost"}"#).unwrap();
+        let error = Member::from_value(&missing_user, 100_u64, &[]).unwrap_err();
+        assert_eq!(error.to_string(), "missing field `member.user`");
+
+        let bad_user = json::from_str(r#"{"user":"42"}"#).unwrap();
+        let error = Member::from_value(&bad_user, 100_u64, &[]).unwrap_err();
+        assert_eq!(error.to_string(), "field `member.user` must be an object");
+
+        let bad_role =
+            json::from_str(r#"{"user":{"id":"42","username":"winter"},"roles":[true]}"#).unwrap();
+        let error = Member::from_value(&bad_role, 100_u64, &[]).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `member.roles[0]` must be a snowflake"
+        );
+
+        let bad_timestamp =
+            json::from_str(r#"{"user":{"id":"42","username":"winter"},"joined_at":"yesterday"}"#)
+                .unwrap();
+        let error = Member::from_value(&bad_timestamp, 100_u64, &[]).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `member.joined_at` must be a valid ISO 8601 timestamp"
+        );
     }
 }

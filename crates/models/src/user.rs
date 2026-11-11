@@ -7,7 +7,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, Colour, HasId, Snowflake};
+use data::{Object, Value};
 use enums::PublicUserFlags;
+
+use crate::cast::{self, CastError};
 
 /// Represents a Discord user.
 /// Equality and hashing are based on the user's ID.
@@ -50,6 +53,71 @@ impl User {
             discriminator: "0".to_owned(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a user from a Discord user object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "user")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let id = cast::required_snowflake(object, path, "id")?;
+        let name = cast::required_string(object, path, "username")?.to_owned();
+        let discriminator = cast::optional_string(object, path, "discriminator")?
+            .unwrap_or("0")
+            .to_owned();
+        let global_name = cast::optional_string(object, path, "global_name")?.map(str::to_owned);
+        let avatar =
+            cast::optional_string(object, path, "avatar")?.map(|hash| Asset::from_avatar(id, hash));
+        let bot = cast::optional_bool(object, path, "bot", false)?;
+        let system = cast::optional_bool(object, path, "system", false)?;
+        let banner = cast::optional_string(object, path, "banner")?
+            .map(|hash| Asset::from_user_banner(id, hash));
+        let accent_colour = cast::optional_colour(object, path, "accent_color")?;
+
+        let decoration_path = cast::field_path(path, "avatar_decoration_data");
+        let (avatar_decoration, avatar_decoration_sku_id) =
+            match cast::optional_object(object, path, "avatar_decoration_data")? {
+                Some(decoration) => (
+                    cast::optional_string(decoration, &decoration_path, "asset")?
+                        .map(Asset::from_avatar_decoration),
+                    cast::optional_snowflake(decoration, &decoration_path, "sku_id")?,
+                ),
+                None => (
+                    cast::optional_string(object, path, "avatar_decoration")?
+                        .map(Asset::from_avatar_decoration),
+                    None,
+                ),
+            };
+
+        let public_flags = PublicUserFlags::from_bits(
+            cast::optional_u64(object, path, "public_flags")?.unwrap_or(0),
+        );
+
+        Ok(Self {
+            id,
+            name,
+            discriminator,
+            global_name,
+            avatar,
+            bot,
+            system,
+            banner,
+            accent_colour,
+            avatar_decoration,
+            avatar_decoration_sku_id,
+            public_flags,
+        })
     }
 
     /// Sets the legacy discriminator.
@@ -268,6 +336,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::{Asset, Colour, HasId, Snowflake};
+    use data::json;
     use enums::PublicUserFlags;
 
     use super::User;
@@ -372,5 +441,94 @@ mod tests {
         assert_eq!(UserTrait::display_name(&user), "Winter");
         assert_eq!(UserTrait::mention(&user), "<@1>");
         assert!(user.avatar_decoration().is_some());
+    }
+
+    #[test]
+    fn decodes_a_full_user_payload() {
+        let value = json::from_str(
+            r#"{
+                "id": "123456789012345678",
+                "username": "winter",
+                "discriminator": "1234",
+                "global_name": "Winter",
+                "avatar": "avatarhash",
+                "bot": true,
+                "system": true,
+                "banner": "bannerhash",
+                "accent_color": 5793266,
+                "avatar_decoration_data": {
+                    "asset": "decorationhash",
+                    "sku_id": "42"
+                },
+                "public_flags": 65536
+            }"#,
+        )
+        .unwrap();
+
+        let user = User::from_value(&value).unwrap();
+
+        assert_eq!(user.id, Snowflake::new(123_456_789_012_345_678));
+        assert_eq!(user.name, "winter");
+        assert_eq!(user.discriminator, "1234");
+        assert_eq!(user.global_name.as_deref(), Some("Winter"));
+        assert_eq!(user.avatar.as_ref().map(Asset::key), Some("avatarhash"));
+        assert!(user.bot);
+        assert!(user.system);
+        assert_eq!(user.banner.as_ref().map(Asset::key), Some("bannerhash"));
+        assert_eq!(user.accent_colour, Some(Colour::new(5_793_266)));
+        assert_eq!(
+            user.avatar_decoration.as_ref().map(Asset::key),
+            Some("decorationhash")
+        );
+        assert_eq!(user.avatar_decoration_sku_id, Some(Snowflake::new(42)));
+        assert_eq!(user.public_flags, PublicUserFlags::VERIFIED_BOT);
+        assert!(user.avatar.as_ref().unwrap().url().contains("/avatars/"));
+        assert!(user.banner.as_ref().unwrap().url().contains("/banners/"));
+    }
+
+    #[test]
+    fn decodes_minimal_and_legacy_user_payloads() {
+        let value = json::from_str(r#"{"id":1,"username":"winter"}"#).unwrap();
+        let user = User::from_value(&value).unwrap();
+        assert_eq!(user.id, Snowflake::new(1));
+        assert_eq!(user.discriminator, "0");
+        assert_eq!(user.global_name, None);
+        assert_eq!(user.avatar, None);
+        assert!(!user.bot);
+        assert!(!user.system);
+        assert_eq!(user.public_flags, PublicUserFlags::none());
+
+        let legacy =
+            json::from_str(r#"{"id":"1","username":"winter","avatar_decoration":"legacy"}"#)
+                .unwrap();
+        let user = User::from_value(&legacy).unwrap();
+        assert_eq!(
+            user.avatar_decoration.as_ref().map(Asset::key),
+            Some("legacy")
+        );
+        assert_eq!(user.avatar_decoration_sku_id, None);
+    }
+
+    #[test]
+    fn rejects_malformed_user_payloads() {
+        let missing = json::from_str(r#"{"username":"winter"}"#).unwrap();
+        let error = User::from_value(&missing).unwrap_err();
+        assert_eq!(error.to_string(), "missing field `user.id`");
+
+        let wrong_type = json::from_str(r#"{"id":1,"username":2}"#).unwrap();
+        let error = User::from_value(&wrong_type).unwrap_err();
+        assert_eq!(error.to_string(), "field `user.username` must be a string");
+
+        let invalid_id = json::from_str(r#"{"id":"nope","username":"winter"}"#).unwrap();
+        let error = User::from_value(&invalid_id).unwrap_err();
+        assert_eq!(error.to_string(), "field `user.id` must be a snowflake");
+
+        let invalid_colour =
+            json::from_str(r#"{"id":1,"username":"winter","accent_color":16777216}"#).unwrap();
+        let error = User::from_value(&invalid_colour).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `user.accent_color` must be a 24-bit colour"
+        );
     }
 }

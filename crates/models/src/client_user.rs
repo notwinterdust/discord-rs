@@ -8,8 +8,10 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 use abc::{Asset, HasId, Snowflake};
+use data::Value;
 
 use crate::User;
+use crate::cast::{self, CastError};
 
 /// Represents the user the client is logged in as.
 /// Equality and hashing are based on the underlying user's ID,
@@ -35,6 +37,22 @@ impl ClientUser {
             mfa_enabled: false,
             locale: None,
         }
+    }
+
+    /// Decodes a client user from a Discord user object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the user data is malformed or an
+    /// account-only field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        let object = cast::object(value, "user")?;
+        Ok(Self {
+            user: User::from_value_at(value, "user")?,
+            verified: cast::optional_bool(object, "user", "verified", false)?,
+            mfa_enabled: cast::optional_bool(object, "user", "mfa_enabled", false)?,
+            locale: cast::optional_string(object, "user", "locale")?.map(str::to_owned),
+        })
     }
 
     /// Sets whether the account's email is verified.
@@ -178,6 +196,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::Snowflake;
+    use data::json;
 
     use super::ClientUser;
     use crate::User;
@@ -236,5 +255,44 @@ mod tests {
         let client = ClientUser::from(user.clone());
 
         assert_eq!(client.into_user(), user);
+    }
+
+    #[test]
+    fn decodes_client_user_payloads() {
+        let value = json::from_str(
+            r#"{
+                "id": "123",
+                "username": "winter",
+                "verified": true,
+                "mfa_enabled": true,
+                "locale": "en-US"
+            }"#,
+        )
+        .unwrap();
+
+        let client = ClientUser::from_value(&value).unwrap();
+
+        assert_eq!(client.id(), Snowflake::new(123));
+        assert_eq!(client.name, "winter");
+        assert!(client.verified);
+        assert!(client.mfa_enabled);
+        assert_eq!(client.locale.as_deref(), Some("en-US"));
+    }
+
+    #[test]
+    fn decodes_minimal_client_user_payloads_and_reports_errors() {
+        let value = json::from_str(r#"{"id":"1","username":"winter"}"#).unwrap();
+        let client = ClientUser::from_value(&value).unwrap();
+        assert!(!client.verified);
+        assert!(!client.mfa_enabled);
+        assert_eq!(client.locale, None);
+
+        let malformed = json::from_str(r#"{"id":"1","username":"winter","locale":1}"#).unwrap();
+        let error = ClientUser::from_value(&malformed).unwrap_err();
+        assert_eq!(error.to_string(), "field `user.locale` must be a string");
+
+        let missing_user = json::from_str(r#"{"verified":true}"#).unwrap();
+        let error = ClientUser::from_value(&missing_user).unwrap_err();
+        assert_eq!(error.to_string(), "missing field `user.id`");
     }
 }

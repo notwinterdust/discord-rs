@@ -10,7 +10,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, Colour, HasId, Snowflake};
+use data::{Object, Value};
 use enums::{Permissions, RoleFlags};
+
+use crate::cast::{self, CastError};
 
 /// Extra information attached to a managed role.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -34,6 +37,39 @@ impl RoleTags {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Decodes role tags from a Discord role tags object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a tag has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "tags")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            bot_id: cast::optional_snowflake(object, path, "bot_id")?,
+            integration_id: cast::optional_snowflake(object, path, "integration_id")?,
+            subscription_listing_id: cast::optional_snowflake(
+                object,
+                path,
+                "subscription_listing_id",
+            )?,
+            premium_subscriber: cast::optional_presence_flag(object, path, "premium_subscriber")?,
+            available_for_purchase: cast::optional_presence_flag(
+                object,
+                path,
+                "available_for_purchase",
+            )?,
+            guild_connection: cast::optional_presence_flag(object, path, "guild_connection")?,
+        })
     }
 
     /// Returns `true` if the role is associated with a bot.
@@ -135,6 +171,79 @@ impl Role {
             name: name.into(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a role from a Discord role object.
+    ///
+    /// Role payloads do not carry their guild ID, so the caller supplies it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "role", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        let name = cast::required_string(object, path, "name")?.to_owned();
+
+        let colors_path = cast::field_path(path, "colors");
+        let colors = cast::optional_object(object, path, "colors")?;
+        let colour = match cast::optional_colour(object, path, "color")? {
+            Some(colour) => colour,
+            None => match colors {
+                Some(colors) => cast::optional_colour(colors, &colors_path, "primary_color")?
+                    .unwrap_or_default(),
+                None => Colour::default(),
+            },
+        };
+        let secondary_colour = match cast::optional_colour(object, path, "secondary_color")? {
+            Some(colour) => Some(colour),
+            None => match colors {
+                Some(colors) => cast::optional_colour(colors, &colors_path, "secondary_color")?,
+                None => None,
+            },
+        };
+        let tertiary_colour = match cast::optional_colour(object, path, "tertiary_color")? {
+            Some(colour) => Some(colour),
+            None => match colors {
+                Some(colors) => cast::optional_colour(colors, &colors_path, "tertiary_color")?,
+                None => None,
+            },
+        };
+
+        let tags_path = cast::field_path(path, "tags");
+        let tags = cast::optional_object(object, path, "tags")?
+            .map(|tags| RoleTags::from_object_at(tags, &tags_path))
+            .transpose()?;
+
+        Ok(Self {
+            guild_id,
+            id,
+            name,
+            colour,
+            secondary_colour,
+            tertiary_colour,
+            hoist: cast::optional_bool(object, path, "hoist", false)?,
+            position: cast::optional_i64(object, path, "position")?.unwrap_or(0),
+            permissions: Permissions::from_bits(
+                cast::optional_permission_bits(object, path, "permissions")?.unwrap_or(0),
+            ),
+            managed: cast::optional_bool(object, path, "managed", false)?,
+            mentionable: cast::optional_bool(object, path, "mentionable", false)?,
+            icon: cast::optional_string(object, path, "icon")?
+                .map(|hash| Asset::from_role_icon(id, hash)),
+            unicode_emoji: cast::optional_string(object, path, "unicode_emoji")?.map(str::to_owned),
+            flags: RoleFlags::from_bits(cast::optional_u64(object, path, "flags")?.unwrap_or(0)),
+            tags,
+        })
     }
 
     /// Sets the primary colour.
@@ -409,6 +518,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::{Asset, Colour, HasId, Snowflake};
+    use data::json;
     use enums::{Permissions, RoleFlags};
 
     use super::{Role, RoleIcon, RoleTags};
@@ -539,5 +649,141 @@ mod tests {
         a.hash(&mut hasher_a);
         b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn decodes_a_full_role_payload() {
+        let value = json::from_str(
+            r#"{
+                "id": "45",
+                "name": "Moderator",
+                "color": 5793266,
+                "hoist": true,
+                "position": 5,
+                "permissions": "8",
+                "managed": true,
+                "mentionable": true,
+                "icon": "iconhash",
+                "unicode_emoji": "🛡",
+                "flags": 1,
+                "tags": {
+                    "bot_id": "99",
+                    "premium_subscriber": null
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let role = Role::from_value(&value, 1_u64).unwrap();
+
+        assert_eq!(role.guild_id, Snowflake::new(1));
+        assert_eq!(role.id, Snowflake::new(45));
+        assert_eq!(role.name, "Moderator");
+        assert_eq!(role.colour, Colour::new(5_793_266));
+        assert!(role.hoist);
+        assert_eq!(role.position, 5);
+        assert_eq!(role.permissions, Permissions::ADMINISTRATOR);
+        assert!(role.managed);
+        assert!(role.mentionable);
+        assert_eq!(role.icon.as_ref().map(Asset::key), Some("iconhash"));
+        assert_eq!(role.unicode_emoji.as_deref(), Some("🛡"));
+        assert_eq!(role.flags, RoleFlags::IN_PROMPT);
+        let tags = role.tags.as_ref().unwrap();
+        assert_eq!(tags.bot_id, Some(Snowflake::new(99)));
+        assert!(tags.premium_subscriber);
+        assert!(!tags.available_for_purchase);
+        assert!(!tags.guild_connection);
+    }
+
+    #[test]
+    fn decodes_minimal_roles_and_gradient_colours() {
+        let value = json::from_str(r#"{"id":"45","name":"Member"}"#).unwrap();
+        let role = Role::from_value(&value, 1_u64).unwrap();
+        assert_eq!(role.colour, Colour::default());
+        assert_eq!(role.secondary_colour, None);
+        assert_eq!(role.tertiary_colour, None);
+        assert_eq!(role.position, 0);
+        assert_eq!(role.permissions, Permissions::NONE);
+        assert_eq!(role.flags, RoleFlags::NONE);
+        assert!(!role.hoist);
+        assert!(!role.managed);
+        assert!(!role.mentionable);
+        assert_eq!(role.icon, None);
+        assert_eq!(role.unicode_emoji, None);
+        assert_eq!(role.tags, None);
+
+        let value = json::from_str(
+            r#"{
+                "id": "45",
+                "name": "Gradient",
+                "colors": {
+                    "primary_color": 5793266,
+                    "secondary_color": 16711680,
+                    "tertiary_color": 65280
+                }
+            }"#,
+        )
+        .unwrap();
+        let role = Role::from_value(&value, 1_u64).unwrap();
+        assert_eq!(role.colour, Colour::new(5_793_266));
+        assert_eq!(role.secondary_colour, Some(Colour::new(0xFF_0000)));
+        assert_eq!(role.tertiary_colour, Some(Colour::new(0x00_FF00)));
+
+        let value =
+            json::from_str(r#"{"id":"45","name":"Numeric","permissions":8,"color":255}"#).unwrap();
+        let role = Role::from_value(&value, 1_u64).unwrap();
+        assert_eq!(role.permissions, Permissions::ADMINISTRATOR);
+        assert_eq!(role.colour, Colour::new(255));
+    }
+
+    #[test]
+    fn role_tags_report_presence_and_errors() {
+        let tags = RoleTags::from_value(
+            &json::from_str(
+                r#"{
+                    "integration_id": "1",
+                    "subscription_listing_id": "2",
+                    "available_for_purchase": null,
+                    "guild_connection": true
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(tags.integration_id, Some(Snowflake::new(1)));
+        assert_eq!(tags.subscription_listing_id, Some(Snowflake::new(2)));
+        assert!(tags.available_for_purchase);
+        assert!(tags.guild_connection);
+        assert!(!tags.premium_subscriber);
+        assert!(!tags.is_bot_managed());
+
+        let bad_tag =
+            RoleTags::from_value(&json::from_str(r#"{"premium_subscriber":"yes"}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(
+            bad_tag.to_string(),
+            "field `tags.premium_subscriber` must be a boolean"
+        );
+
+        let missing =
+            Role::from_value(&json::from_str(r#"{"name":"No ID"}"#).unwrap(), 1_u64).unwrap_err();
+        assert_eq!(missing.to_string(), "missing field `role.id`");
+
+        let bad_permissions = Role::from_value(
+            &json::from_str(r#"{"id":"1","name":"Bad","permissions":"nope"}"#).unwrap(),
+            1_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_permissions.to_string(),
+            "field `role.permissions` must be a permission bitfield"
+        );
+
+        let bad_tags = Role::from_value(
+            &json::from_str(r#"{"id":"1","name":"Bad","tags":[]}"#).unwrap(),
+            1_u64,
+        )
+        .unwrap_err();
+        assert_eq!(bad_tags.to_string(), "field `role.tags` must be an object");
     }
 }

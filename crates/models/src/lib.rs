@@ -5,12 +5,14 @@
 //! logs, guilds, guild channels, permission overwrites, invites, messages,
 //! components, embeds, forum tags, interactions, reactions, emojis, stickers,
 //! polls, scheduled events, threads, webhooks, users, client users, guild roles
-//! and guild members.
+//! and guild members. Models can be decoded from [`data::Value`] trees with the
+//! `from_value` constructors, which report the path of any malformed field.
 
 #![forbid(unsafe_code)]
 
 mod application;
 mod audit_log;
+mod cast;
 mod channel;
 mod client_user;
 mod components;
@@ -37,6 +39,7 @@ pub use audit_log::{
     AuditLog, AuditLogChange, AuditLogChangeKey, AuditLogChangeValue, AuditLogEntry,
     AuditLogEntryInfo, AuditLogEntryTarget,
 };
+pub use cast::CastError;
 pub use channel::{
     GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
 };
