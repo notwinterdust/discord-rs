@@ -7,6 +7,8 @@
 //! polls, scheduled events, threads, webhooks, users, client users, guild roles
 //! and guild members. Models can be decoded from [`data::Value`] trees with the
 //! `from_value` constructors, which report the path of any malformed field.
+//! Guild payloads decode their roles, members, channels, stickers and scheduled
+//! events together, resolving member role IDs against the decoded roles.
 
 #![forbid(unsafe_code)]
 

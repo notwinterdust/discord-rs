@@ -8,7 +8,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{HasId, Snowflake};
+use data::{Object, Value};
 use enums::ThreadMemberFlags;
+
+use crate::cast::{self, CastError};
 
 /// The metadata describing a thread's archive state.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,6 +64,34 @@ impl ThreadMetadata {
             archive_timestamp,
             ..Self::default()
         }
+    }
+
+    /// Decodes thread metadata from a Discord thread metadata object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "thread_metadata")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            archived: cast::optional_bool(object, path, "archived", false)?,
+            auto_archive_duration: cast::optional_u64(object, path, "auto_archive_duration")?
+                .unwrap_or(Self::ONE_DAY),
+            archive_timestamp: cast::required_timestamp(object, path, "archive_timestamp")?,
+            archiver_id: cast::optional_snowflake(object, path, "archiver_id")?,
+            locked: cast::optional_bool(object, path, "locked", false)?,
+            invitable: cast::optional_bool(object, path, "invitable", true)?,
+            create_timestamp: cast::optional_timestamp(object, path, "create_timestamp")?,
+        })
     }
 
     /// Sets whether the thread is archived.
@@ -172,6 +203,44 @@ impl ThreadMember {
         }
     }
 
+    /// Decodes a thread member from a Discord thread member object.
+    ///
+    /// Thread member payloads often omit the thread ID when they are nested in
+    /// a thread channel, so `thread_id` is used as the fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value, thread_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "thread_member", thread_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        thread_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, thread_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        thread_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "user_id")?,
+            thread_id: cast::optional_snowflake(object, path, "id")?.unwrap_or(thread_id),
+            joined_at: cast::optional_timestamp(object, path, "join_timestamp")?
+                .unwrap_or(SystemTime::UNIX_EPOCH),
+            flags: ThreadMemberFlags::from_bits(
+                cast::optional_u64(object, path, "flags")?.unwrap_or(0),
+            ),
+        })
+    }
+
     /// Sets the member's thread flags.
     #[must_use]
     pub fn with_flags(mut self, flags: ThreadMemberFlags) -> Self {
@@ -249,6 +318,84 @@ impl ThreadInfo {
             owner_id: owner_id.into(),
             ..Self::default()
         }
+    }
+
+    /// Decodes thread state from a Discord thread channel object.
+    ///
+    /// `thread_id` is used for nested thread members that omit their thread ID,
+    /// and `parent_id` is used when the payload does not repeat the parent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a field has an unexpected type.
+    pub fn from_value(
+        value: &Value,
+        thread_id: impl Into<Snowflake>,
+        parent_id: impl Into<Snowflake>,
+    ) -> Result<Self, CastError> {
+        Self::from_value_at(value, "thread", thread_id.into(), parent_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        thread_id: Snowflake,
+        parent_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+
+        let metadata_path = cast::field_path(path, "thread_metadata");
+        let metadata = match cast::optional_object(object, path, "thread_metadata")? {
+            Some(metadata) => ThreadMetadata::from_object_at(metadata, &metadata_path)?,
+            None => ThreadMetadata::default(),
+        };
+
+        let members_path = cast::field_path(path, "members");
+        let mut members = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "members")? {
+            members.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                members.push(ThreadMember::from_value_at(
+                    value,
+                    &cast::index_path(&members_path, index),
+                    thread_id,
+                )?);
+            }
+        }
+
+        let thread_member_path = cast::field_path(path, "thread_member");
+        let legacy_member_path = cast::field_path(path, "member");
+        let me = if let Some(member) = cast::optional_object(object, path, "thread_member")? {
+            Some(ThreadMember::from_object_at(
+                member,
+                &thread_member_path,
+                thread_id,
+            )?)
+        } else if let Some(member) = cast::optional_object(object, path, "member")? {
+            Some(ThreadMember::from_object_at(
+                member,
+                &legacy_member_path,
+                thread_id,
+            )?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            parent_id: cast::optional_snowflake(object, path, "parent_id")?.unwrap_or(parent_id),
+            owner_id: cast::optional_snowflake(object, path, "owner_id")?.unwrap_or_default(),
+            metadata,
+            message_count: cast::optional_u64(object, path, "message_count")?.unwrap_or(0),
+            member_count: cast::optional_u64(object, path, "member_count")?.unwrap_or(0),
+            total_message_sent: cast::optional_u64(object, path, "total_message_sent")?
+                .unwrap_or(0),
+            applied_tags: cast::optional_snowflake_array(object, path, "applied_tags")?
+                .unwrap_or_default(),
+            members,
+            me,
+            last_pin_timestamp: cast::optional_timestamp(object, path, "last_pin_timestamp")?,
+            newly_created: cast::optional_bool(object, path, "newly_created", false)?,
+        })
     }
 
     /// Sets the thread's archive metadata.
@@ -392,9 +539,10 @@ impl ThreadInfo {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use abc::{HasId, Snowflake};
+    use data::json;
     use enums::ThreadMemberFlags;
 
     use super::{ThreadInfo, ThreadMember, ThreadMetadata};
@@ -511,5 +659,103 @@ mod tests {
         assert!(info.remove_member(99_u64).is_none());
         assert_eq!(info.members().len(), 1);
         assert_eq!(ThreadInfo::default().parent_id, Snowflake::ZERO);
+    }
+
+    #[test]
+    fn decodes_thread_metadata_and_members() {
+        let metadata = ThreadMetadata::from_value(
+            &json::from_str(
+                r#"{
+                    "archived": true,
+                    "auto_archive_duration": 60,
+                    "archive_timestamp": "2021-08-01T12:34:56Z",
+                    "archiver_id": "1",
+                    "locked": true,
+                    "invitable": false,
+                    "create_timestamp": "2021-07-01T00:00:00Z"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(metadata.archived);
+        assert!(metadata.locked);
+        assert!(!metadata.invitable);
+        assert_eq!(metadata.auto_archive_duration, 60);
+        assert_eq!(
+            metadata.archive_timestamp,
+            UNIX_EPOCH + Duration::new(1_627_821_296, 0)
+        );
+        assert_eq!(metadata.archiver_id, Some(Snowflake::new(1)));
+        assert_eq!(
+            metadata.create_timestamp,
+            Some(UNIX_EPOCH + Duration::new(1_625_097_600, 0))
+        );
+
+        let member = ThreadMember::from_value(
+            &json::from_str(r#"{"user_id":"2","join_timestamp":"2021-08-02T00:00:00Z","flags":1}"#)
+                .unwrap(),
+            11_u64,
+        )
+        .unwrap();
+        assert_eq!(member.id, Snowflake::new(2));
+        assert_eq!(member.thread_id, Snowflake::new(11));
+        assert_eq!(
+            member.joined_at,
+            UNIX_EPOCH + Duration::new(1_627_862_400, 0)
+        );
+        assert!(member.is_in_thread());
+
+        let minimal = ThreadMember::from_value(
+            &json::from_str(r#"{"id":"11","user_id":"3"}"#).unwrap(),
+            99_u64,
+        )
+        .unwrap();
+        assert_eq!(minimal.thread_id, Snowflake::new(11));
+        assert_eq!(minimal.joined_at, UNIX_EPOCH);
+        assert!(!minimal.is_in_thread());
+    }
+
+    #[test]
+    fn decodes_thread_info_from_a_channel_object() {
+        let info = ThreadInfo::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "11",
+                    "parent_id": "10",
+                    "owner_id": "2",
+                    "message_count": 3,
+                    "member_count": 1,
+                    "total_message_sent": 4,
+                    "applied_tags": ["7"],
+                    "member": {
+                        "id": "11",
+                        "user_id": "3",
+                        "join_timestamp": "2021-08-03T00:00:00Z"
+                    },
+                    "newly_created": true
+                }"#,
+            )
+            .unwrap(),
+            11_u64,
+            99_u64,
+        )
+        .unwrap();
+
+        assert_eq!(info.parent_id, Snowflake::new(10));
+        assert_eq!(info.owner_id, Snowflake::new(2));
+        assert_eq!(info.message_count, 3);
+        assert_eq!(info.member_count, 1);
+        assert_eq!(info.total_message_sent, 4);
+        assert_eq!(info.applied_tags, [Snowflake::new(7)]);
+        assert_eq!(info.me.as_ref().map(|me| me.id), Some(Snowflake::new(3)));
+        assert!(info.newly_created);
+
+        let malformed = json::from_str(r#"{"owner_id":"nope"}"#).unwrap();
+        let error = ThreadInfo::from_value(&malformed, 11_u64, 10_u64).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `thread.owner_id` must be a snowflake"
+        );
     }
 }

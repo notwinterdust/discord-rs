@@ -9,10 +9,12 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{HasId, Snowflake};
+use data::Value;
 use enums::{
     ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, Permissions, VideoQualityMode,
 };
 
+use crate::cast::{self, CastError};
 use crate::{ForumTag, Guild, Member, Role, ThreadInfo, ThreadMember, ThreadMetadata};
 
 /// The target kind of a channel permission overwrite.
@@ -235,6 +237,39 @@ impl PermissionOverwriteEntry {
         Self::new(target_id, PermissionOverwriteType::Member, overwrite)
     }
 
+    /// Decodes a permission overwrite entry from a Discord overwrite object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "overwrite")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let target_id = cast::required_snowflake(object, path, "id")?;
+        let kind = cast::required_enum(
+            object,
+            path,
+            "type",
+            "a permission overwrite type",
+            PermissionOverwriteType::from_value,
+        )?;
+        let allow = Permissions::from_bits(
+            cast::optional_permission_bits(object, path, "allow")?.unwrap_or(0),
+        );
+        let deny = Permissions::from_bits(
+            cast::optional_permission_bits(object, path, "deny")?.unwrap_or(0),
+        );
+        Ok(Self::new(
+            target_id,
+            kind,
+            PermissionOverwrite::from_pair(allow, deny),
+        ))
+    }
+
     /// Returns whether this entry applies to the given target.
     #[must_use]
     pub fn matches(&self, target_id: Snowflake, kind: PermissionOverwriteType) -> bool {
@@ -358,6 +393,136 @@ impl GuildChannel {
             channel_type,
             ..Self::default()
         }
+    }
+
+    /// Decodes a guild channel from a Discord channel object.
+    ///
+    /// The payload's `guild_id` is used when present, otherwise the supplied
+    /// `guild_id` is used.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "channel", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?.unwrap_or(guild_id);
+        let name = cast::required_string(object, path, "name")?.to_owned();
+        let channel_type = cast::required_enum(
+            object,
+            path,
+            "type",
+            "a channel type",
+            ChannelType::from_value,
+        )?;
+
+        let overwrites_path = cast::field_path(path, "permission_overwrites");
+        let mut permission_overwrites = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "permission_overwrites")? {
+            permission_overwrites.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                permission_overwrites.push(PermissionOverwriteEntry::from_value_at(
+                    value,
+                    &cast::index_path(&overwrites_path, index),
+                )?);
+            }
+        }
+
+        let parent_id = cast::optional_snowflake(object, path, "parent_id")?;
+        let category_id = if channel_type.is_thread() {
+            None
+        } else {
+            parent_id
+        };
+
+        let tags_path = cast::field_path(path, "available_tags");
+        let mut available_tags = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "available_tags")? {
+            available_tags.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                available_tags.push(ForumTag::from_value_at(
+                    value,
+                    &cast::index_path(&tags_path, index),
+                )?);
+            }
+        }
+
+        let thread = if channel_type.is_thread() {
+            Some(ThreadInfo::from_value_at(
+                value,
+                path,
+                id,
+                parent_id.unwrap_or_default(),
+            )?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            id,
+            guild_id,
+            name,
+            channel_type,
+            position: cast::optional_i64(object, path, "position")?.unwrap_or(0),
+            category_id,
+            permission_overwrites,
+            nsfw: cast::optional_bool(object, path, "nsfw", false)?,
+            flags: ChannelFlags::from_bits(cast::optional_u64(object, path, "flags")?.unwrap_or(0)),
+            topic: cast::optional_string(object, path, "topic")?.map(str::to_owned),
+            slowmode_delay: cast::optional_u64(object, path, "rate_limit_per_user")?.unwrap_or(0),
+            default_auto_archive_duration: cast::optional_u64(
+                object,
+                path,
+                "default_auto_archive_duration",
+            )?
+            .unwrap_or(1440),
+            default_thread_slowmode_delay: cast::optional_u64(
+                object,
+                path,
+                "default_thread_rate_limit_per_user",
+            )?
+            .unwrap_or(0),
+            last_message_id: cast::optional_snowflake(object, path, "last_message_id")?,
+            bitrate: cast::optional_u64(object, path, "bitrate")?.unwrap_or(64_000),
+            user_limit: cast::optional_u64(object, path, "user_limit")?.unwrap_or(0),
+            rtc_region: cast::optional_string(object, path, "rtc_region")?.map(str::to_owned),
+            video_quality_mode: cast::optional_enum(
+                object,
+                path,
+                "video_quality_mode",
+                "a video quality mode",
+                VideoQualityMode::from_value,
+            )?
+            .unwrap_or_default(),
+            status: cast::optional_string(object, path, "status")?.map(str::to_owned),
+            default_layout: cast::optional_enum(
+                object,
+                path,
+                "default_forum_layout",
+                "a forum layout",
+                ForumLayout::from_value,
+            )?
+            .unwrap_or_default(),
+            default_sort_order: cast::optional_enum(
+                object,
+                path,
+                "default_sort_order",
+                "a forum sort order",
+                ForumSortOrder::from_value,
+            )?
+            .unwrap_or_default(),
+            available_tags,
+            thread,
+        })
     }
 
     /// Sets the channel's position.
@@ -1014,9 +1179,10 @@ impl HasId for GuildChannel {
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use abc::{HasId, Snowflake};
+    use data::json;
     use enums::{
         ChannelFlags, ChannelType, ForumLayout, ForumSortOrder, Permissions, VideoQualityMode,
     };
@@ -1516,5 +1682,258 @@ mod tests {
         a.hash(&mut hasher_a);
         b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn decodes_permission_overwrite_objects() {
+        let role = json::from_str(r#"{"id":"20","type":0,"allow":"1024","deny":"8"}"#).unwrap();
+        let overwrite = PermissionOverwriteEntry::from_value(&role).unwrap();
+        assert_eq!(overwrite.target_id, Snowflake::new(20));
+        assert!(overwrite.is_role());
+        assert_eq!(overwrite.overwrite.allow(), Permissions::VIEW_CHANNEL);
+        assert_eq!(overwrite.overwrite.deny(), Permissions::ADMINISTRATOR);
+
+        let member = json::from_str(r#"{"id":2,"type":1}"#).unwrap();
+        let overwrite = PermissionOverwriteEntry::from_value(&member).unwrap();
+        assert!(overwrite.is_member());
+        assert!(overwrite.overwrite.is_empty());
+
+        let unknown = json::from_str(r#"{"id":"20","type":9}"#).unwrap();
+        let error = PermissionOverwriteEntry::from_value(&unknown).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `overwrite.type` must be a permission overwrite type"
+        );
+
+        let missing = json::from_str(r#"{"type":0}"#).unwrap();
+        let error = PermissionOverwriteEntry::from_value(&missing).unwrap_err();
+        assert_eq!(error.to_string(), "missing field `overwrite.id`");
+    }
+
+    #[test]
+    fn decodes_a_text_channel_payload() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "guild_id": "100",
+                "name": "general",
+                "type": 0,
+                "position": 3,
+                "parent_id": "5",
+                "permission_overwrites": [
+                    {"id": "20", "type": 0, "allow": "1024", "deny": "8"}
+                ],
+                "nsfw": true,
+                "flags": 2,
+                "topic": "hello",
+                "rate_limit_per_user": 10,
+                "default_auto_archive_duration": 4320,
+                "default_thread_rate_limit_per_user": 5,
+                "last_message_id": "99",
+                "bitrate": 128000,
+                "user_limit": 25,
+                "rtc_region": "us-east",
+                "video_quality_mode": 2,
+                "status": "live",
+                "default_forum_layout": 1,
+                "default_sort_order": 1
+            }"#,
+        )
+        .unwrap();
+
+        let channel = GuildChannel::from_value(&value, 1_u64).unwrap();
+
+        assert_eq!(channel.id, Snowflake::new(10));
+        assert_eq!(channel.guild_id, Snowflake::new(100));
+        assert_eq!(channel.name, "general");
+        assert_eq!(channel.channel_type, ChannelType::Text);
+        assert_eq!(channel.position, 3);
+        assert_eq!(channel.category_id, Some(Snowflake::new(5)));
+        assert_eq!(channel.permission_overwrites.len(), 1);
+        assert!(channel.nsfw);
+        assert_eq!(channel.flags, ChannelFlags::PINNED);
+        assert_eq!(channel.topic.as_deref(), Some("hello"));
+        assert_eq!(channel.slowmode_delay, 10);
+        assert_eq!(channel.default_auto_archive_duration, 4320);
+        assert_eq!(channel.default_thread_slowmode_delay, 5);
+        assert_eq!(channel.last_message_id, Some(Snowflake::new(99)));
+        assert_eq!(channel.bitrate, 128_000);
+        assert_eq!(channel.user_limit, 25);
+        assert_eq!(channel.rtc_region.as_deref(), Some("us-east"));
+        assert_eq!(channel.video_quality_mode, VideoQualityMode::Full);
+        assert_eq!(channel.status.as_deref(), Some("live"));
+        assert_eq!(channel.default_layout, ForumLayout::ListView);
+        assert_eq!(channel.default_sort_order, ForumSortOrder::CreationDate);
+        assert_eq!(channel.thread, None);
+        assert!(channel.is_text());
+    }
+
+    #[test]
+    fn decodes_a_thread_channel_payload() {
+        let value = json::from_str(
+            r#"{
+                "id": "11",
+                "guild_id": "100",
+                "name": "topic",
+                "type": 11,
+                "parent_id": "10",
+                "thread_metadata": {
+                    "archived": true,
+                    "auto_archive_duration": 60,
+                    "archive_timestamp": "2021-08-01T12:34:56Z",
+                    "archiver_id": "1",
+                    "locked": true,
+                    "invitable": false,
+                    "create_timestamp": "2021-07-01T00:00:00Z"
+                },
+                "owner_id": "2",
+                "message_count": 3,
+                "member_count": 1,
+                "total_message_sent": 4,
+                "applied_tags": ["7"],
+                "members": [
+                    {
+                        "id": "11",
+                        "user_id": "2",
+                        "join_timestamp": "2021-08-02T00:00:00Z",
+                        "flags": 1
+                    }
+                ],
+                "thread_member": {
+                    "id": "11",
+                    "user_id": "3",
+                    "join_timestamp": "2021-08-03T00:00:00Z"
+                },
+                "last_pin_timestamp": "2021-08-04T00:00:00Z",
+                "newly_created": true
+            }"#,
+        )
+        .unwrap();
+
+        let channel = GuildChannel::from_value(&value, 1_u64).unwrap();
+
+        assert_eq!(channel.channel_type, ChannelType::PublicThread);
+        assert_eq!(channel.category_id, None);
+        assert!(channel.is_thread());
+        assert!(channel.is_public_thread());
+
+        let thread = channel.thread.as_ref().unwrap();
+        assert_eq!(thread.parent_id, Snowflake::new(10));
+        assert_eq!(thread.owner_id, Snowflake::new(2));
+        assert!(thread.metadata.archived);
+        assert!(thread.metadata.locked);
+        assert!(!thread.metadata.invitable);
+        assert_eq!(thread.metadata.auto_archive_duration, 60);
+        assert_eq!(
+            thread.metadata.archive_timestamp,
+            UNIX_EPOCH + Duration::new(1_627_821_296, 0)
+        );
+        assert_eq!(thread.metadata.archiver_id, Some(Snowflake::new(1)));
+        assert_eq!(
+            thread.metadata.create_timestamp,
+            Some(UNIX_EPOCH + Duration::new(1_625_097_600, 0))
+        );
+        assert_eq!(thread.message_count, 3);
+        assert_eq!(thread.member_count, 1);
+        assert_eq!(thread.total_message_sent, 4);
+        assert_eq!(thread.applied_tags, [Snowflake::new(7)]);
+        assert_eq!(thread.members.len(), 1);
+        assert_eq!(thread.members[0].id, Snowflake::new(2));
+        assert_eq!(thread.members[0].thread_id, Snowflake::new(11));
+        assert_eq!(
+            thread.members[0].joined_at,
+            UNIX_EPOCH + Duration::new(1_627_862_400, 0)
+        );
+        assert!(thread.members[0].is_in_thread());
+        assert_eq!(thread.me.as_ref().map(|me| me.id), Some(Snowflake::new(3)));
+        assert_eq!(
+            thread.last_pin_timestamp,
+            Some(UNIX_EPOCH + Duration::new(1_628_035_200, 0))
+        );
+        assert!(thread.newly_created);
+        assert_eq!(channel.thread_parent_id(), Some(Snowflake::new(10)));
+    }
+
+    #[test]
+    fn decodes_forum_channels_and_tags() {
+        let value = json::from_str(
+            r#"{
+                "id": "20",
+                "guild_id": "100",
+                "name": "forum",
+                "type": 15,
+                "default_forum_layout": 2,
+                "default_sort_order": 1,
+                "available_tags": [
+                    {
+                        "id": "7",
+                        "name": "Bug",
+                        "moderated": true,
+                        "emoji": {"id": "8", "name": "bug", "animated": true}
+                    },
+                    {
+                        "id": "9",
+                        "name": "Idea",
+                        "emoji": {"name": "💡"}
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let channel = GuildChannel::from_value(&value, 1_u64).unwrap();
+
+        assert!(channel.is_forum());
+        assert_eq!(channel.default_layout, ForumLayout::GalleryView);
+        assert_eq!(channel.default_sort_order, ForumSortOrder::CreationDate);
+        assert_eq!(channel.available_tags.len(), 2);
+        assert_eq!(channel.available_tags[0].name, "Bug");
+        assert!(channel.available_tags[0].moderated);
+        let emoji = channel.available_tags[0].emoji.as_ref().unwrap();
+        assert_eq!(emoji.id, Some(Snowflake::new(8)));
+        assert_eq!(emoji.name.as_deref(), Some("bug"));
+        assert!(emoji.animated);
+        assert!(channel.has_tag(9_u64));
+        assert_eq!(
+            channel.available_tags[1]
+                .emoji
+                .as_ref()
+                .and_then(|emoji| emoji.name.as_deref()),
+            Some("💡")
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_channel_payloads() {
+        let missing_type = json::from_str(r#"{"id":"10","name":"general"}"#).unwrap();
+        let error = GuildChannel::from_value(&missing_type, 1_u64).unwrap_err();
+        assert_eq!(error.to_string(), "missing field `channel.type`");
+
+        let unknown_type = json::from_str(r#"{"id":"10","name":"general","type":99}"#).unwrap();
+        let error = GuildChannel::from_value(&unknown_type, 1_u64).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `channel.type` must be a channel type"
+        );
+
+        let bad_overwrite = json::from_str(
+            r#"{"id":"10","name":"general","type":0,"permission_overwrites":[{"id":"1","type":"role"}]}"#,
+        )
+        .unwrap();
+        let error = GuildChannel::from_value(&bad_overwrite, 1_u64).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "field `channel.permission_overwrites[0].type` must be a non-negative integer"
+        );
+
+        let bad_thread = json::from_str(
+            r#"{"id":"10","name":"thread","type":11,"thread_metadata":{"archived":true}}"#,
+        )
+        .unwrap();
+        let error = GuildChannel::from_value(&bad_thread, 1_u64).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "missing field `channel.thread_metadata.archive_timestamp`"
+        );
     }
 }

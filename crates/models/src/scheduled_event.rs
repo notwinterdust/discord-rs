@@ -8,8 +8,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, HasId, Snowflake};
+use data::Value;
 use enums::{GuildScheduledEventEntityType, GuildScheduledEventStatus, PrivacyLevel};
 
+use crate::cast::{self, CastError};
 use crate::{Guild, GuildChannel, Member, User};
 
 /// A scheduled event in a guild.
@@ -90,6 +92,80 @@ impl GuildScheduledEvent {
             start_time,
             ..Self::default()
         }
+    }
+
+    /// Decodes a scheduled event from a Discord scheduled event object.
+    ///
+    /// The payload's `guild_id` is used when present, otherwise the supplied
+    /// `guild_id` is used.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "event", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?.unwrap_or(guild_id);
+
+        let metadata_path = cast::field_path(path, "entity_metadata");
+        let location = match cast::optional_object(object, path, "entity_metadata")? {
+            Some(metadata) => {
+                cast::optional_string(metadata, &metadata_path, "location")?.map(str::to_owned)
+            }
+            None => None,
+        };
+
+        let creator_path = cast::field_path(path, "creator");
+        let creator = cast::optional_object(object, path, "creator")?
+            .map(|creator| User::from_object_at(creator, &creator_path))
+            .transpose()?;
+
+        Ok(Self {
+            id,
+            guild_id,
+            channel_id: cast::optional_snowflake(object, path, "channel_id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            entity_type: cast::required_enum(
+                object,
+                path,
+                "entity_type",
+                "a scheduled event entity type",
+                GuildScheduledEventEntityType::from_value,
+            )?,
+            entity_id: cast::optional_snowflake(object, path, "entity_id")?,
+            start_time: cast::required_timestamp(object, path, "scheduled_start_time")?,
+            end_time: cast::optional_timestamp(object, path, "scheduled_end_time")?,
+            privacy_level: cast::required_enum(
+                object,
+                path,
+                "privacy_level",
+                "a privacy level",
+                PrivacyLevel::from_value,
+            )?,
+            status: cast::required_enum(
+                object,
+                path,
+                "status",
+                "a scheduled event status",
+                GuildScheduledEventStatus::from_value,
+            )?,
+            cover_image: cast::optional_string(object, path, "image")?
+                .map(|hash| Asset::from_scheduled_event_cover_image(id, hash)),
+            user_count: cast::optional_u64(object, path, "user_count")?.unwrap_or(0),
+            creator,
+            creator_id: cast::optional_snowflake(object, path, "creator_id")?,
+            location,
+        })
     }
 
     /// Sets the channel the event is held in.
@@ -340,9 +416,10 @@ impl Hash for ScheduledEventUser {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use abc::{Asset, HasId, Snowflake};
+    use data::json;
     use enums::{
         ChannelType, GuildScheduledEventEntityType, GuildScheduledEventStatus, PrivacyLevel,
     };
@@ -460,5 +537,147 @@ mod tests {
         assert_eq!(first, with_member);
         assert_eq!(first.to_string(), user.to_string());
         assert!(with_member.member.is_some());
+    }
+
+    #[test]
+    fn decodes_scheduled_event_objects() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "guild_id": "100",
+                "channel_id": "30",
+                "name": "Launch",
+                "description": "We are live",
+                "entity_type": 2,
+                "entity_id": "30",
+                "scheduled_start_time": "2021-08-01T12:34:56Z",
+                "scheduled_end_time": "2021-08-02T00:00:00Z",
+                "privacy_level": 2,
+                "status": 2,
+                "image": "coverhash",
+                "user_count": 5,
+                "creator": {"id": "1", "username": "winter"},
+                "creator_id": "1",
+                "entity_metadata": {"location": "Stage"}
+            }"#,
+        )
+        .unwrap();
+
+        let event = GuildScheduledEvent::from_value(&value, 999_u64).unwrap();
+        assert_eq!(event.guild_id, Snowflake::new(100));
+        assert_eq!(event.channel_id, Some(Snowflake::new(30)));
+        assert_eq!(event.name, "Launch");
+        assert_eq!(event.description.as_deref(), Some("We are live"));
+        assert_eq!(event.entity_type, GuildScheduledEventEntityType::Voice);
+        assert_eq!(event.entity_id, Some(Snowflake::new(30)));
+        assert_eq!(
+            event.start_time,
+            UNIX_EPOCH + Duration::new(1_627_821_296, 0)
+        );
+        assert_eq!(
+            event.end_time,
+            Some(UNIX_EPOCH + Duration::new(1_627_862_400, 0))
+        );
+        assert_eq!(event.privacy_level, PrivacyLevel::GuildOnly);
+        assert_eq!(event.status, GuildScheduledEventStatus::Active);
+        assert_eq!(event.user_count, 5);
+        assert_eq!(event.location.as_deref(), Some("Stage"));
+        assert_eq!(
+            event.creator.as_ref().map(|creator| creator.id),
+            Some(Snowflake::new(1))
+        );
+        assert_eq!(event.creator_id, Some(Snowflake::new(1)));
+        assert!(
+            event
+                .cover_image
+                .as_ref()
+                .unwrap()
+                .url()
+                .contains("/guild-events/10/coverhash.png")
+        );
+
+        let minimal = GuildScheduledEvent::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "11",
+                    "name": "External",
+                    "entity_type": 3,
+                    "scheduled_start_time": "2021-08-01T12:34:56Z",
+                    "privacy_level": 2,
+                    "status": 1
+                }"#,
+            )
+            .unwrap(),
+            100_u64,
+        )
+        .unwrap();
+        assert_eq!(minimal.guild_id, Snowflake::new(100));
+        assert_eq!(minimal.channel_id, None);
+        assert_eq!(minimal.end_time, None);
+        assert_eq!(minimal.cover_image, None);
+        assert_eq!(minimal.user_count, 0);
+        assert_eq!(minimal.creator, None);
+        assert_eq!(minimal.location, None);
+
+        let bad_entity = GuildScheduledEvent::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "11",
+                    "name": "External",
+                    "entity_type": 9,
+                    "scheduled_start_time": "2021-08-01T12:34:56Z",
+                    "privacy_level": 2,
+                    "status": 1
+                }"#,
+            )
+            .unwrap(),
+            100_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_entity.to_string(),
+            "field `event.entity_type` must be a scheduled event entity type"
+        );
+
+        let bad_time = GuildScheduledEvent::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "11",
+                    "name": "External",
+                    "entity_type": 3,
+                    "scheduled_start_time": "tomorrow",
+                    "privacy_level": 2,
+                    "status": 1
+                }"#,
+            )
+            .unwrap(),
+            100_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_time.to_string(),
+            "field `event.scheduled_start_time` must be a valid ISO 8601 timestamp"
+        );
+
+        let bad_creator = GuildScheduledEvent::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "11",
+                    "name": "External",
+                    "entity_type": 3,
+                    "scheduled_start_time": "2021-08-01T12:34:56Z",
+                    "privacy_level": 2,
+                    "status": 1,
+                    "creator": {"id": "nope", "username": "winter"}
+                }"#,
+            )
+            .unwrap(),
+            100_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_creator.to_string(),
+            "field `event.creator.id` must be a snowflake"
+        );
     }
 }

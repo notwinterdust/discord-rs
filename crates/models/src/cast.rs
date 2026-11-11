@@ -155,6 +155,29 @@ pub(crate) fn i64(value: &Value, path: &str) -> Result<i64, CastError> {
         .ok_or_else(|| CastError::invalid_type(path, "an integer"))
 }
 
+/// Reads a 32-bit unsigned integer, reporting the path on failure.
+pub(crate) fn u32(value: &Value, path: &str) -> Result<u32, CastError> {
+    let raw = u64(value, path)?;
+    u32::try_from(raw).map_err(|_| CastError::invalid_value(path, "a 32-bit integer"))
+}
+
+/// Reads an 8-bit unsigned integer, reporting the path on failure.
+pub(crate) fn u8(value: &Value, path: &str) -> Result<u8, CastError> {
+    let raw = u64(value, path)?;
+    u8::try_from(raw).map_err(|_| CastError::invalid_value(path, "an 8-bit integer"))
+}
+
+/// Reads an enumerated value from its raw integer representation.
+pub(crate) fn enum_value<T>(
+    value: &Value,
+    path: &str,
+    expected: &'static str,
+    convert: impl FnOnce(u8) -> Option<T>,
+) -> Result<T, CastError> {
+    let raw = u8(value, path)?;
+    convert(raw).ok_or_else(|| CastError::invalid_value(path, expected))
+}
+
 /// Reads a snowflake from either its string or numeric representation.
 pub(crate) fn snowflake(value: &Value, path: &str) -> Result<Snowflake, CastError> {
     if let Some(text) = value.as_str() {
@@ -253,6 +276,40 @@ pub(crate) fn optional_array<'a>(
         .transpose()
 }
 
+/// Reads an optional array of strings.
+pub(crate) fn optional_string_array(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<Option<Vec<String>>, CastError> {
+    let Some(values) = optional_array(object, parent, field)? else {
+        return Ok(None);
+    };
+    let path = field_path(parent, field);
+    let mut strings = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        strings.push(string(value, &index_path(&path, index))?.to_owned());
+    }
+    Ok(Some(strings))
+}
+
+/// Reads an optional array of snowflakes.
+pub(crate) fn optional_snowflake_array(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<Option<Vec<Snowflake>>, CastError> {
+    let Some(values) = optional_array(object, parent, field)? else {
+        return Ok(None);
+    };
+    let path = field_path(parent, field);
+    let mut snowflakes = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        snowflakes.push(snowflake(value, &index_path(&path, index))?);
+    }
+    Ok(Some(snowflakes))
+}
+
 /// Reads a required snowflake field.
 pub(crate) fn required_snowflake(
     object: &Object,
@@ -309,6 +366,53 @@ pub(crate) fn optional_i64(
         .transpose()
 }
 
+/// Reads an optional 32-bit unsigned integer field.
+pub(crate) fn optional_u32(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<Option<u32>, CastError> {
+    optional(object, parent, field)
+        .map(|(value, path)| u32(value, &path))
+        .transpose()
+}
+
+/// Reads an optional 8-bit unsigned integer field.
+pub(crate) fn optional_u8(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<Option<u8>, CastError> {
+    optional(object, parent, field)
+        .map(|(value, path)| u8(value, &path))
+        .transpose()
+}
+
+/// Reads a required enumerated field.
+pub(crate) fn required_enum<T>(
+    object: &Object,
+    parent: &str,
+    field: &str,
+    expected: &'static str,
+    convert: impl FnOnce(u8) -> Option<T>,
+) -> Result<T, CastError> {
+    let (value, path) = required(object, parent, field)?;
+    enum_value(value, &path, expected, convert)
+}
+
+/// Reads an optional enumerated field.
+pub(crate) fn optional_enum<T>(
+    object: &Object,
+    parent: &str,
+    field: &str,
+    expected: &'static str,
+    convert: impl FnOnce(u8) -> Option<T>,
+) -> Result<Option<T>, CastError> {
+    optional(object, parent, field)
+        .map(|(value, path)| enum_value(value, &path, expected, convert))
+        .transpose()
+}
+
 /// Reads an optional colour field.
 pub(crate) fn optional_colour(
     object: &Object,
@@ -340,6 +444,16 @@ pub(crate) fn optional_timestamp(
     optional(object, parent, field)
         .map(|(value, path)| timestamp(value, &path))
         .transpose()
+}
+
+/// Reads a required ISO 8601 timestamp.
+pub(crate) fn required_timestamp(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<SystemTime, CastError> {
+    let (value, path) = required(object, parent, field)?;
+    timestamp(value, &path)
 }
 
 /// Reads a flag that is represented by the mere presence of its key.

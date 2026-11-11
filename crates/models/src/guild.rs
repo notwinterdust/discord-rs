@@ -10,11 +10,13 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, Colour, HasId, Snowflake};
+use data::Value;
 use enums::{
     ChannelType, ContentFilter, MfaLevel, NotificationLevel, NsfwLevel, Permissions,
     VerificationLevel,
 };
 
+use crate::cast::{self, CastError};
 use crate::{GuildChannel, GuildScheduledEvent, Member, Role, Sticker};
 
 /// Represents a Discord guild (server).
@@ -161,6 +163,202 @@ impl Guild {
             name: name.into(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a guild from a Discord guild object.
+    ///
+    /// Roles, members, channels, stickers and scheduled events are decoded
+    /// when present. Member role IDs are resolved against the decoded guild
+    /// roles, so cached roles must be part of the same payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        let path = "guild";
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+
+        let roles_path = cast::field_path(path, "roles");
+        let mut roles = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "roles")? {
+            roles.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                roles.push(Role::from_value_at(
+                    value,
+                    &cast::index_path(&roles_path, index),
+                    id,
+                )?);
+            }
+        }
+        roles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let members_path = cast::field_path(path, "members");
+        let mut members = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "members")? {
+            members.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                members.push(Member::from_value_at(
+                    value,
+                    &cast::index_path(&members_path, index),
+                    id,
+                    &roles,
+                )?);
+            }
+        }
+
+        let channels_path = cast::field_path(path, "channels");
+        let mut channels = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "channels")? {
+            channels.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                channels.push(GuildChannel::from_value_at(
+                    value,
+                    &cast::index_path(&channels_path, index),
+                    id,
+                )?);
+            }
+        }
+
+        let stickers_path = cast::field_path(path, "stickers");
+        let mut stickers = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "stickers")? {
+            stickers.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                stickers.push(Sticker::from_value_at(
+                    value,
+                    &cast::index_path(&stickers_path, index),
+                )?);
+            }
+        }
+        for sticker in &mut stickers {
+            if sticker.is_guild() && sticker.guild_id.is_none() {
+                sticker.guild_id = Some(id);
+            }
+        }
+
+        let events_path = cast::field_path(path, "guild_scheduled_events");
+        let mut scheduled_events = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "guild_scheduled_events")? {
+            scheduled_events.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                scheduled_events.push(GuildScheduledEvent::from_value_at(
+                    value,
+                    &cast::index_path(&events_path, index),
+                    id,
+                )?);
+            }
+        }
+
+        Ok(Self {
+            id,
+            name: cast::optional_string(object, path, "name")?
+                .unwrap_or_default()
+                .to_owned(),
+            icon: cast::optional_string(object, path, "icon")?
+                .map(|hash| Asset::from_guild_icon(id, hash)),
+            banner: cast::optional_string(object, path, "banner")?
+                .map(|hash| Asset::from_guild_image(id, hash, "banners")),
+            splash: cast::optional_string(object, path, "splash")?
+                .map(|hash| Asset::from_guild_image(id, hash, "splashes")),
+            discovery_splash: cast::optional_string(object, path, "discovery_splash")?
+                .map(|hash| Asset::from_guild_image(id, hash, "discovery-splashes")),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            owner_id: cast::optional_snowflake(object, path, "owner_id")?,
+            roles,
+            members,
+            channels,
+            stickers,
+            scheduled_events,
+            member_count: cast::optional_u64(object, path, "member_count")?,
+            unavailable: cast::optional_bool(object, path, "unavailable", false)?,
+            verification_level: cast::optional_enum(
+                object,
+                path,
+                "verification_level",
+                "a verification level",
+                VerificationLevel::from_value,
+            )?
+            .unwrap_or_default(),
+            default_notifications: cast::optional_enum(
+                object,
+                path,
+                "default_message_notifications",
+                "a notification level",
+                NotificationLevel::from_value,
+            )?
+            .unwrap_or_default(),
+            explicit_content_filter: cast::optional_enum(
+                object,
+                path,
+                "explicit_content_filter",
+                "a content filter",
+                ContentFilter::from_value,
+            )?
+            .unwrap_or_default(),
+            mfa_level: cast::optional_enum(
+                object,
+                path,
+                "mfa_level",
+                "an MFA level",
+                MfaLevel::from_value,
+            )?
+            .unwrap_or_default(),
+            nsfw_level: cast::optional_enum(
+                object,
+                path,
+                "nsfw_level",
+                "an NSFW level",
+                NsfwLevel::from_value,
+            )?
+            .unwrap_or_default(),
+            premium_tier: cast::optional_u8(object, path, "premium_tier")?.unwrap_or(0),
+            premium_subscription_count: cast::optional_u64(
+                object,
+                path,
+                "premium_subscription_count",
+            )?
+            .unwrap_or(0),
+            premium_progress_bar_enabled: cast::optional_bool(
+                object,
+                path,
+                "premium_progress_bar_enabled",
+                false,
+            )?,
+            preferred_locale: cast::optional_string(object, path, "preferred_locale")?
+                .unwrap_or("en-US")
+                .to_owned(),
+            features: cast::optional_string_array(object, path, "features")?.unwrap_or_default(),
+            vanity_url_code: cast::optional_string(object, path, "vanity_url_code")?
+                .map(str::to_owned),
+            afk_timeout: cast::optional_u64(object, path, "afk_timeout")?.unwrap_or(0),
+            afk_channel_id: cast::optional_snowflake(object, path, "afk_channel_id")?,
+            system_channel_id: cast::optional_snowflake(object, path, "system_channel_id")?,
+            rules_channel_id: cast::optional_snowflake(object, path, "rules_channel_id")?,
+            public_updates_channel_id: cast::optional_snowflake(
+                object,
+                path,
+                "public_updates_channel_id",
+            )?,
+            safety_alerts_channel_id: cast::optional_snowflake(
+                object,
+                path,
+                "safety_alerts_channel_id",
+            )?,
+            widget_enabled: cast::optional_bool(object, path, "widget_enabled", false)?,
+            widget_channel_id: cast::optional_snowflake(object, path, "widget_channel_id")?,
+            max_presences: cast::optional_u64(object, path, "max_presences")?,
+            max_members: cast::optional_u64(object, path, "max_members")?,
+            max_video_channel_users: cast::optional_u64(object, path, "max_video_channel_users")?,
+            max_stage_video_users: cast::optional_u64(object, path, "max_stage_video_users")?,
+            approximate_member_count: cast::optional_u64(object, path, "approximate_member_count")?,
+            approximate_presence_count: cast::optional_u64(
+                object,
+                path,
+                "approximate_presence_count",
+            )?,
+        })
     }
 
     /// Sets the guild owner's ID.
@@ -812,7 +1010,8 @@ mod tests {
     use std::hash::{Hash, Hasher};
     use std::time::{Duration, SystemTime};
 
-    use abc::{HasId, Snowflake};
+    use abc::{Asset, HasId, Snowflake};
+    use data::json;
     use enums::{ChannelType, Permissions, VerificationLevel};
 
     use super::Guild;
@@ -1173,5 +1372,211 @@ mod tests {
         assert_eq!(guild.stickers()[0].guild_id, Some(Snowflake::new(100)));
         assert_eq!(guild.stickers()[1].guild_id, None);
         assert!(guild.get_sticker(99_u64).is_none());
+    }
+
+    #[test]
+    fn decodes_a_full_guild_payload() {
+        let value = json::from_str(
+            r#"{
+                "id": "100",
+                "name": "Test Guild",
+                "icon": "iconhash",
+                "banner": "bannerhash",
+                "splash": "splashhash",
+                "discovery_splash": "discoveryhash",
+                "description": "A guild",
+                "owner_id": "1",
+                "roles": [
+                    {"id": "100", "name": "@everyone", "position": 0},
+                    {"id": "10", "name": "Mod", "position": 1, "permissions": "8"}
+                ],
+                "members": [
+                    {
+                        "user": {"id": "1", "username": "owner"},
+                        "roles": ["10"],
+                        "joined_at": "2021-08-01T12:34:56Z"
+                    }
+                ],
+                "channels": [
+                    {"id": "5", "name": "general", "type": 0}
+                ],
+                "stickers": [
+                    {"id": "7", "name": "wave", "format_type": 1, "type": 2}
+                ],
+                "guild_scheduled_events": [
+                    {
+                        "id": "8",
+                        "name": "Launch",
+                        "entity_type": 3,
+                        "scheduled_start_time": "2021-08-01T12:34:56Z",
+                        "privacy_level": 2,
+                        "status": 1,
+                        "entity_metadata": {"location": "Somewhere"}
+                    }
+                ],
+                "member_count": 2,
+                "verification_level": 2,
+                "default_message_notifications": 1,
+                "explicit_content_filter": 2,
+                "mfa_level": 1,
+                "nsfw_level": 2,
+                "premium_tier": 2,
+                "premium_subscription_count": 5,
+                "premium_progress_bar_enabled": true,
+                "preferred_locale": "en-GB",
+                "features": ["COMMUNITY", "NEWS"],
+                "vanity_url_code": "test",
+                "afk_timeout": 300,
+                "afk_channel_id": "9",
+                "system_channel_id": "9",
+                "rules_channel_id": "10",
+                "public_updates_channel_id": "11",
+                "safety_alerts_channel_id": "12",
+                "widget_enabled": true,
+                "widget_channel_id": "13",
+                "max_presences": 100,
+                "max_members": 200,
+                "max_video_channel_users": 25,
+                "max_stage_video_users": 50,
+                "approximate_member_count": 150,
+                "approximate_presence_count": 30
+            }"#,
+        )
+        .unwrap();
+
+        let guild = Guild::from_value(&value).unwrap();
+
+        assert_eq!(guild.id, Snowflake::new(100));
+        assert_eq!(guild.name, "Test Guild");
+        assert_eq!(guild.icon.as_ref().map(Asset::key), Some("iconhash"));
+        assert_eq!(guild.banner.as_ref().map(Asset::key), Some("bannerhash"));
+        assert_eq!(guild.splash.as_ref().map(Asset::key), Some("splashhash"));
+        assert_eq!(
+            guild.discovery_splash.as_ref().map(Asset::key),
+            Some("discoveryhash")
+        );
+        assert_eq!(guild.description.as_deref(), Some("A guild"));
+        assert_eq!(guild.owner_id, Some(Snowflake::new(1)));
+
+        assert_eq!(guild.roles.len(), 2);
+        assert_eq!(guild.roles[0].name, "@everyone");
+        assert_eq!(guild.roles[1].name, "Mod");
+        assert_eq!(guild.roles[1].permissions, Permissions::ADMINISTRATOR);
+
+        assert_eq!(guild.members.len(), 1);
+        assert_eq!(guild.members[0].user.id, Snowflake::new(1));
+        assert_eq!(guild.members[0].roles.len(), 1);
+        assert_eq!(guild.members[0].roles[0].name, "Mod");
+
+        assert_eq!(guild.channels.len(), 1);
+        assert_eq!(guild.channels[0].channel_type, ChannelType::Text);
+        assert!(guild.get_channel(5_u64).is_some());
+
+        assert_eq!(guild.stickers.len(), 1);
+        assert_eq!(guild.stickers[0].guild_id, Some(Snowflake::new(100)));
+
+        assert_eq!(guild.scheduled_events().len(), 1);
+        assert_eq!(guild.scheduled_events()[0].guild_id, Snowflake::new(100));
+        assert_eq!(
+            guild.scheduled_events()[0].location.as_deref(),
+            Some("Somewhere")
+        );
+
+        assert_eq!(guild.member_count, Some(2));
+        assert_eq!(guild.verification_level, VerificationLevel::Medium);
+        assert_eq!(guild.premium_tier, 2);
+        assert_eq!(guild.premium_subscription_count, 5);
+        assert!(guild.premium_progress_bar_enabled);
+        assert_eq!(guild.preferred_locale, "en-GB");
+        assert_eq!(guild.features, ["COMMUNITY", "NEWS"]);
+        assert_eq!(guild.vanity_url_code.as_deref(), Some("test"));
+        assert_eq!(guild.afk_timeout, 300);
+        assert_eq!(guild.afk_channel_id, Some(Snowflake::new(9)));
+        assert_eq!(guild.system_channel_id, Some(Snowflake::new(9)));
+        assert_eq!(guild.rules_channel_id, Some(Snowflake::new(10)));
+        assert_eq!(guild.public_updates_channel_id, Some(Snowflake::new(11)));
+        assert_eq!(guild.safety_alerts_channel_id, Some(Snowflake::new(12)));
+        assert!(guild.widget_enabled);
+        assert_eq!(guild.widget_channel_id, Some(Snowflake::new(13)));
+        assert_eq!(guild.max_presences, Some(100));
+        assert_eq!(guild.max_members, Some(200));
+        assert_eq!(guild.max_video_channel_users, Some(25));
+        assert_eq!(guild.max_stage_video_users, Some(50));
+        assert_eq!(guild.approximate_member_count, Some(150));
+        assert_eq!(guild.approximate_presence_count, Some(30));
+    }
+
+    #[test]
+    fn decodes_minimal_and_unavailable_guilds() {
+        let minimal = Guild::from_value(&json::from_str(r#"{"id":"200"}"#).unwrap()).unwrap();
+        assert_eq!(minimal.id, Snowflake::new(200));
+        assert_eq!(minimal.name, "");
+        assert!(minimal.roles.is_empty());
+        assert!(minimal.members.is_empty());
+        assert!(minimal.channels.is_empty());
+        assert!(minimal.stickers.is_empty());
+        assert!(minimal.scheduled_events().is_empty());
+        assert_eq!(minimal.member_count, None);
+        assert_eq!(minimal.preferred_locale, "en-US");
+        assert!(!minimal.unavailable);
+
+        let unavailable =
+            Guild::from_value(&json::from_str(r#"{"id":"200","unavailable":true}"#).unwrap())
+                .unwrap();
+        assert!(unavailable.unavailable);
+        assert_eq!(unavailable.name, "");
+    }
+
+    #[test]
+    fn rejects_malformed_guild_payloads() {
+        let missing_id =
+            Guild::from_value(&json::from_str(r#"{"name":"Test"}"#).unwrap()).unwrap_err();
+        assert_eq!(missing_id.to_string(), "missing field `guild.id`");
+
+        let bad_role =
+            Guild::from_value(&json::from_str(r#"{"id":"100","roles":[{"name":"Mod"}]}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(bad_role.to_string(), "missing field `guild.roles[0].id`");
+
+        let bad_member = Guild::from_value(
+            &json::from_str(r#"{"id":"100","members":[{"user":"owner"}]}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_member.to_string(),
+            "field `guild.members[0].user` must be an object"
+        );
+
+        let bad_channel = Guild::from_value(
+            &json::from_str(r#"{"id":"100","channels":[{"id":"5","name":"general","type":99}]}"#)
+                .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_channel.to_string(),
+            "field `guild.channels[0].type` must be a channel type"
+        );
+
+        let bad_sticker = Guild::from_value(
+            &json::from_str(r#"{"id":"100","stickers":[{"id":"7","name":"wave","type":1}]}"#)
+                .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_sticker.to_string(),
+            "missing field `guild.stickers[0].format_type`"
+        );
+
+        let bad_event = Guild::from_value(
+            &json::from_str(
+                r#"{"id":"100","guild_scheduled_events":[{"id":"8","name":"Launch","entity_type":3,"scheduled_start_time":"later","privacy_level":2,"status":1}]}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_event.to_string(),
+            "field `guild.guild_scheduled_events[0].scheduled_start_time` must be a valid ISO 8601 timestamp"
+        );
     }
 }

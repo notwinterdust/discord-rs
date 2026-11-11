@@ -10,6 +10,9 @@ use std::str::FromStr;
 use std::time::SystemTime;
 
 use abc::{CDN_BASE, Snowflake};
+use data::{Object, Value};
+
+use crate::cast::{self, CastError};
 
 /// A Unicode emoji or a reference to a custom emoji.
 #[derive(Clone, Debug, Default)]
@@ -41,6 +44,28 @@ impl PartialEmoji {
             id: Some(id.into()),
             animated: false,
         }
+    }
+
+    /// Decodes an emoji from a Discord partial emoji object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "emoji")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            name: cast::optional_string(object, path, "name")?.map(str::to_owned),
+            id: cast::optional_snowflake(object, path, "id")?,
+            animated: cast::optional_bool(object, path, "animated", false)?,
+        })
     }
 
     /// Sets whether the custom emoji is animated.
@@ -162,6 +187,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::Snowflake;
+    use data::json;
 
     use super::PartialEmoji;
 
@@ -262,5 +288,35 @@ mod tests {
         unicode_a.hash(&mut hasher_a);
         unicode_b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn decodes_partial_emoji_objects() {
+        let custom = PartialEmoji::from_value(
+            &json::from_str(r#"{"id":"10","name":"wave","animated":true}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(custom.id, Some(Snowflake::new(10)));
+        assert_eq!(custom.name.as_deref(), Some("wave"));
+        assert!(custom.animated);
+        assert!(custom.is_custom_emoji());
+
+        let unicode =
+            PartialEmoji::from_value(&json::from_str(r#"{"name":"🎉"}"#).unwrap()).unwrap();
+        assert_eq!(unicode.id, None);
+        assert_eq!(unicode.name.as_deref(), Some("🎉"));
+        assert!(!unicode.animated);
+        assert!(unicode.is_unicode_emoji());
+
+        let empty = PartialEmoji::from_value(&json::from_str("{}").unwrap()).unwrap();
+        assert_eq!(empty.name, None);
+        assert_eq!(empty.id, None);
+
+        let malformed =
+            PartialEmoji::from_value(&json::from_str(r#"{"id":true}"#).unwrap()).unwrap_err();
+        assert_eq!(
+            malformed.to_string(),
+            "field `emoji.id` must be a snowflake"
+        );
     }
 }

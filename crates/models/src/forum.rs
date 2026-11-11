@@ -7,8 +7,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 use abc::{HasId, Snowflake};
+use data::Value;
 
 use crate::PartialEmoji;
+use crate::cast::{self, CastError};
 
 /// A tag that can be applied to a thread in a forum or media channel.
 ///
@@ -57,6 +59,30 @@ impl ForumTag {
         self
     }
 
+    /// Decodes a forum tag from a Discord forum tag object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "tag")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let emoji_path = cast::field_path(path, "emoji");
+        let emoji = cast::optional_object(object, path, "emoji")?
+            .map(|emoji| PartialEmoji::from_object_at(emoji, &emoji_path))
+            .transpose()?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            moderated: cast::optional_bool(object, path, "moderated", false)?,
+            emoji,
+        })
+    }
+
     /// Returns whether only moderators may add or remove the tag.
     #[must_use]
     pub const fn is_moderated(&self) -> bool {
@@ -102,6 +128,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::{HasId, Snowflake};
+    use data::json;
 
     use super::ForumTag;
     use crate::PartialEmoji;
@@ -147,5 +174,48 @@ mod tests {
         a.hash(&mut hasher_a);
         b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn decodes_forum_tag_objects() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "name": "Bug",
+                "moderated": true,
+                "emoji": {"id": "20", "name": "bug", "animated": true}
+            }"#,
+        )
+        .unwrap();
+        let tag = ForumTag::from_value(&value).unwrap();
+        assert_eq!(tag.id, Snowflake::new(10));
+        assert_eq!(tag.name, "Bug");
+        assert!(tag.moderated);
+        let emoji = tag.emoji.as_ref().unwrap();
+        assert_eq!(emoji.id, Some(Snowflake::new(20)));
+        assert_eq!(emoji.name.as_deref(), Some("bug"));
+        assert!(emoji.animated);
+
+        let minimal = ForumTag::from_value(
+            &json::from_str(r#"{"id":"10","name":"Idea","emoji":{"name":"💡"}}"#).unwrap(),
+        )
+        .unwrap();
+        assert!(!minimal.moderated);
+        assert_eq!(
+            minimal
+                .emoji
+                .as_ref()
+                .and_then(|emoji| emoji.name.as_deref()),
+            Some("💡")
+        );
+
+        let missing =
+            ForumTag::from_value(&json::from_str(r#"{"name":"Bug"}"#).unwrap()).unwrap_err();
+        assert_eq!(missing.to_string(), "missing field `tag.id`");
+
+        let bad_emoji =
+            ForumTag::from_value(&json::from_str(r#"{"id":"10","name":"Bug","emoji":1}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(bad_emoji.to_string(), "field `tag.emoji` must be an object");
     }
 }

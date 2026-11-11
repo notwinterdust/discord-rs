@@ -9,9 +9,11 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, CDN_BASE, HasId, Snowflake};
+use data::Value;
 use enums::{StickerFormatType, StickerType};
 
 use crate::User;
+use crate::cast::{self, CastError};
 
 const STICKER_MEDIA_BASE: &str = "https://media.discordapp.net";
 
@@ -150,6 +152,51 @@ impl Sticker {
             available: Some(true),
             ..Self::new(id, name)
         }
+    }
+
+    /// Decodes a sticker from a Discord sticker object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "sticker")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let user_path = cast::field_path(path, "user");
+        let user = cast::optional_object(object, path, "user")?
+            .map(|user| User::from_object_at(user, &user_path))
+            .transpose()?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            format: cast::required_enum(
+                object,
+                path,
+                "format_type",
+                "a sticker format",
+                StickerFormatType::from_value,
+            )?,
+            sticker_type: cast::required_enum(
+                object,
+                path,
+                "type",
+                "a sticker type",
+                StickerType::from_value,
+            )?,
+            tags: cast::optional_string(object, path, "tags")?.map(str::to_owned),
+            pack_id: cast::optional_snowflake(object, path, "pack_id")?,
+            sort_value: cast::optional_u32(object, path, "sort_value")?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            available: cast::optional(object, path, "available")
+                .map(|(value, path)| cast::boolean(value, &path))
+                .transpose()?,
+            user,
+        })
     }
 
     /// Sets the sticker's format.
@@ -387,6 +434,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::{HasId, Snowflake};
+    use data::json;
     use enums::{StickerFormatType, StickerType};
 
     use super::{Sticker, StickerItem, StickerPack};
@@ -511,6 +559,89 @@ mod tests {
         assert_eq!(
             StickerPack::new(10_u64, "a", "", 1_u64),
             StickerPack::new(10_u64, "b", "", 2_u64)
+        );
+    }
+
+    #[test]
+    fn decodes_sticker_objects() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "name": "wave",
+                "description": "A waving hand",
+                "format_type": 2,
+                "type": 2,
+                "tags": "wave, hello",
+                "pack_id": "50",
+                "sort_value": 7,
+                "guild_id": "100",
+                "available": true,
+                "user": {"id": "1", "username": "winter"}
+            }"#,
+        )
+        .unwrap();
+
+        let sticker = Sticker::from_value(&value).unwrap();
+        assert_eq!(sticker.id(), Snowflake::new(10));
+        assert_eq!(sticker.name, "wave");
+        assert_eq!(sticker.description.as_deref(), Some("A waving hand"));
+        assert_eq!(sticker.format, StickerFormatType::Apng);
+        assert_eq!(sticker.sticker_type, StickerType::Guild);
+        assert_eq!(sticker.tags.as_deref(), Some("wave, hello"));
+        assert_eq!(sticker.pack_id, Some(Snowflake::new(50)));
+        assert_eq!(sticker.sort_value, Some(7));
+        assert_eq!(sticker.guild_id, Some(Snowflake::new(100)));
+        assert_eq!(sticker.available, Some(true));
+        assert_eq!(
+            sticker.user.as_ref().map(|user| user.id),
+            Some(Snowflake::new(1))
+        );
+
+        let minimal = Sticker::from_value(
+            &json::from_str(r#"{"id":"11","name":"dance","format_type":1,"type":1}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(minimal.format, StickerFormatType::Png);
+        assert_eq!(minimal.sticker_type, StickerType::Standard);
+        assert_eq!(minimal.description, None);
+        assert_eq!(minimal.pack_id, None);
+        assert_eq!(minimal.available, None);
+        assert_eq!(minimal.user, None);
+
+        let missing_name = Sticker::from_value(
+            &json::from_str(r#"{"id":"10","format_type":1,"type":1}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(missing_name.to_string(), "missing field `sticker.name`");
+
+        let bad_format = Sticker::from_value(
+            &json::from_str(r#"{"id":"10","name":"wave","format_type":9,"type":1}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_format.to_string(),
+            "field `sticker.format_type` must be a sticker format"
+        );
+
+        let bad_type = Sticker::from_value(
+            &json::from_str(r#"{"id":"10","name":"wave","format_type":1,"type":"guild"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_type.to_string(),
+            "field `sticker.type` must be a non-negative integer"
+        );
+
+        let bad_user = Sticker::from_value(
+            &json::from_str(
+                r#"{"id":"10","name":"wave","format_type":1,"type":1,"user":{"id":"nope","username":"winter"}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_user.to_string(),
+            "field `sticker.user.id` must be a snowflake"
         );
     }
 }
