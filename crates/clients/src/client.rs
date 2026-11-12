@@ -8,8 +8,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-use except::HttpError;
 use data::Value;
+use except::HttpError;
 use version::USER_AGENT;
 
 use crate::http::{HttpMethod, HttpRequest, HttpResponse};

@@ -75,12 +75,12 @@ pub use enums::{
     PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
     StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode, WebhookType,
 };
+pub use event::names;
 pub use event::{
     Dispatch, Event, GuildMemberRemove, MessageDelete, MessageDeleteBulk, RawEvent, ReactionEvent,
     ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete, RoleEvent, ThreadDelete,
     TypingStart, UnavailableGuild, WebhooksUpdate,
 };
-pub use event::names;
 pub use forum::ForumTag;
 pub use guild::Guild;
 pub use interaction::{

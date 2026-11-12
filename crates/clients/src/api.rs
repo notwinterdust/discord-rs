@@ -138,8 +138,11 @@ impl<T: Transport> DiscordApi<T> {
         token: &str,
         body: &Value,
     ) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute_json(self.client.post(format!("webhooks/{application_id}/{token}")), body)
+        self.client.execute_json(
+            self.client
+                .post(format!("webhooks/{application_id}/{token}")),
+            body,
+        )
     }
 
     /// Replaces application commands for a guild.

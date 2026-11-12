@@ -26,8 +26,7 @@ pub use client::{
 };
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
-    GatewayTransportError, WebSocketFrame,
-    WebSocketTransport,
+    GatewayTransportError, WebSocketFrame, WebSocketTransport,
 };
 pub use events::{EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, RuntimeError};
 pub use gateway::{

@@ -125,11 +125,7 @@ impl CommandRegistry {
     }
 
     /// Parses and dispatches a message only when a predicate accepts it.
-    pub fn dispatch_checked(
-        &mut self,
-        message: &str,
-        check: impl Fn(&Context) -> bool,
-    ) -> bool {
+    pub fn dispatch_checked(&mut self, message: &str, check: impl Fn(&Context) -> bool) -> bool {
         let Some(rest) = message.strip_prefix(&self.prefix) else {
             return false;
         };
