@@ -351,10 +351,10 @@ impl Gateway {
     /// A reconnect prefers the resume URL supplied by Discord.
     #[must_use]
     pub fn url(&self) -> &str {
-        if self.state == GatewayState::Reconnecting
-            && let Some(url) = &self.resume_gateway_url
-        {
-            return url;
+        if self.state == GatewayState::Reconnecting {
+            if let Some(url) = &self.resume_gateway_url {
+                return url;
+            }
         }
         &self.config.gateway_url
     }
@@ -432,16 +432,15 @@ impl Gateway {
             }
             GatewayOpcode::InvalidSession => {
                 let invalid = InvalidSession::from_value(&payload.data)?;
-                if invalid.resumable
-                    && let Some(resume) = self.resume_payload()
-                {
-                    self.state = GatewayState::Resuming;
-                    Ok(Some(GatewayAction::resume(resume)))
-                } else {
-                    self.clear_session();
-                    self.state = GatewayState::Identifying;
-                    Ok(Some(GatewayAction::identify(self.config.identify())))
+                if invalid.resumable {
+                    if let Some(resume) = self.resume_payload() {
+                        self.state = GatewayState::Resuming;
+                        return Ok(Some(GatewayAction::resume(resume)));
+                    }
                 }
+                self.clear_session();
+                self.state = GatewayState::Identifying;
+                Ok(Some(GatewayAction::identify(self.config.identify())))
             }
             _ => Ok(None),
         }

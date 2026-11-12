@@ -1001,10 +1001,10 @@ impl GuildChannel {
                 base = apply_overwrite(base, &entry.overwrite);
             }
 
-            if !role.is_default()
-                && let Some(entry) = self.overwrite_for_role(role.id)
-            {
-                base = apply_overwrite(base, &entry.overwrite);
+            if !role.is_default() {
+                if let Some(entry) = self.overwrite_for_role(role.id) {
+                    base = apply_overwrite(base, &entry.overwrite);
+                }
             }
         }
 

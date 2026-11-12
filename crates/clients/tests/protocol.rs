@@ -153,7 +153,10 @@ fn threaded_gateway_lifecycle_round_trip() {
         Ok(())
     });
 
-    thread::sleep(Duration::from_millis(40));
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
+    while event_count.load(Ordering::SeqCst) < 1 && std::time::Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
     assert!(coordinator.shutdown().is_ok());
     assert_eq!(event_count.load(Ordering::SeqCst), 1);
 }
