@@ -17,6 +17,8 @@
 //! channel, application and source models.
 //! Audit log pages decode their entries, typed changes, extra information and
 //! referenced users, webhooks, threads and scheduled events.
+//! Gateway dispatches decode into typed [`Event`] values, preserving unknown
+//! event names and their data.
 
 #![forbid(unsafe_code)]
 
@@ -28,6 +30,7 @@ mod client_user;
 mod components;
 mod embed;
 mod emoji;
+mod event;
 mod forum;
 mod guild;
 mod interaction;
@@ -71,6 +74,11 @@ pub use enums::{
     MessageType, MfaLevel, NotificationLevel, NsfwLevel, Permissions, PollLayoutType, PrivacyLevel,
     PublicUserFlags, ReactionType, RoleFlags, SelectDefaultValueType, StickerFormatType,
     StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode, WebhookType,
+};
+pub use event::{
+    Dispatch, Event, GuildMemberRemove, MessageDelete, MessageDeleteBulk, ReactionEvent,
+    ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete, RoleEvent, ThreadDelete,
+    TypingStart, UnavailableGuild, WebhooksUpdate,
 };
 pub use forum::ForumTag;
 pub use guild::Guild;

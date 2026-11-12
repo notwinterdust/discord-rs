@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 use abc::{Asset, HasId, Snowflake};
-use data::Value;
+use data::{Object, Value};
 
 use crate::User;
 use crate::cast::{self, CastError};
@@ -46,12 +46,20 @@ impl ClientUser {
     /// Returns [`CastError`] when the user data is malformed or an
     /// account-only field has an unexpected type.
     pub fn from_value(value: &Value) -> Result<Self, CastError> {
-        let object = cast::object(value, "user")?;
+        Self::from_value_at(value, "user")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
         Ok(Self {
-            user: User::from_value_at(value, "user")?,
-            verified: cast::optional_bool(object, "user", "verified", false)?,
-            mfa_enabled: cast::optional_bool(object, "user", "mfa_enabled", false)?,
-            locale: cast::optional_string(object, "user", "locale")?.map(str::to_owned),
+            user: User::from_object_at(object, path)?,
+            verified: cast::optional_bool(object, path, "verified", false)?,
+            mfa_enabled: cast::optional_bool(object, path, "mfa_enabled", false)?,
+            locale: cast::optional_string(object, path, "locale")?.map(str::to_owned),
         })
     }
 

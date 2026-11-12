@@ -398,6 +398,43 @@ impl ScheduledEventUser {
     pub const fn user_id(&self) -> Snowflake {
         self.user.id
     }
+
+    /// Decodes a scheduled event subscriber from a Discord gateway object.
+    ///
+    /// `guild_id` is used for the subscriber's member data, when present.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or malformed.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "scheduled_event_user", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+
+        let user_path = cast::field_path(path, "user");
+        let user = User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?;
+
+        let member_path = cast::field_path(path, "member");
+        let member = cast::optional_object(object, path, "member")?
+            .map(|member| Member::from_object_at(member, &member_path, guild_id, &[]))
+            .transpose()?;
+
+        Ok(Self {
+            guild_scheduled_event_id: cast::required_snowflake(
+                object,
+                path,
+                "guild_scheduled_event_id",
+            )?,
+            user,
+            member,
+        })
+    }
 }
 
 impl fmt::Display for ScheduledEventUser {
