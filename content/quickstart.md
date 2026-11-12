@@ -61,7 +61,7 @@ fn main() {
             // 2. Pattern match on typed Discord Gateway events
             match event {
                 Event::Ready(ready) => {
-                    println!("🚀 Logged in as: {} (ID: {})", ready.user.username, ready.user.id);
+                    println!("Logged in as: {} (ID: {})", ready.user.username, ready.user.id);
                     println!("Connected to {} guilds.", ready.guilds.len());
                 }
 
@@ -110,7 +110,7 @@ You will see:
 ```text
 Starting bot with discord-rust...
 Bot initialized successfully. Launching shards...
-🚀 Logged in as: RustaceanBot (ID: 1234567890)
+Logged in as: RustaceanBot (ID: 1234567890)
 Connected to 1 guilds.
 ```
 

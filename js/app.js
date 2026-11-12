@@ -138,6 +138,9 @@ async function loadDocument(docId) {
   }
 }
 
+const ICON_COPY_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+const ICON_CHECK_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#57F287" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
 // ---------------------------------------------------------------------------
 // Code Block Copy Buttons
 // ---------------------------------------------------------------------------
@@ -147,12 +150,12 @@ function attachCodeCopyButtons(container) {
   codeBlocks.forEach(pre => {
     const btn = document.createElement('button');
     btn.className = 'code-copy-btn';
-    btn.textContent = 'Copy';
+    btn.innerHTML = `${ICON_COPY_SVG} <span>Copy</span>`;
     btn.addEventListener('click', () => {
       const code = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
       navigator.clipboard.writeText(code).then(() => {
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+        btn.innerHTML = `${ICON_CHECK_SVG} <span style="color: #57F287;">Copied!</span>`;
+        setTimeout(() => { btn.innerHTML = `${ICON_COPY_SVG} <span>Copy</span>`; }, 2000);
       });
     });
     pre.appendChild(btn);
@@ -258,10 +261,11 @@ function buildSidebar() {
 function setupQuickInstallCopy() {
   const btn = document.getElementById('copy-install-btn');
   if (btn) {
+    btn.innerHTML = ICON_COPY_SVG;
     btn.addEventListener('click', () => {
       navigator.clipboard.writeText('cargo add discord-rust').then(() => {
-        btn.innerHTML = '✓';
-        setTimeout(() => { btn.innerHTML = '📋'; }, 2000);
+        btn.innerHTML = ICON_CHECK_SVG;
+        setTimeout(() => { btn.innerHTML = ICON_COPY_SVG; }, 2000);
       });
     });
   }

@@ -35,7 +35,7 @@ You can override the webhook's default username, avatar, and send rich content:
 use discord_rust::webhook::WebhookMessage;
 
 let message = WebhookMessage::new()
-    .with_content("Build #42 passed successfully! 🚀")
+    .with_content("Build #42 passed successfully!")
     .with_username("CI Notifier")
     .with_avatar_url("https://cdn.discordapp.com/emojis/12345.png")
     .silent(true); // Suppresses notification pings
