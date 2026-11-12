@@ -14,7 +14,9 @@ pub mod connection;
 pub mod events;
 pub mod gateway;
 pub mod http;
+pub mod api;
 
+pub use api::DiscordApi;
 pub use client::{Client, ClientState, HttpClient, TcpTransport, Transport};
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
