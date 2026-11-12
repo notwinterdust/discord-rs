@@ -89,11 +89,12 @@ impl PartialEmoji {
             .strip_prefix("a:")
             .map_or((false, trimmed), |rest| (true, rest));
 
-        if let Some((name, id)) = rest.rsplit_once(':')
-            && !name.is_empty()
-            && let Ok(id) = id.parse::<u64>()
-        {
-            return Self::custom(Snowflake::new(id), name).with_animated(animated);
+        if let Some((name, id_str)) = rest.rsplit_once(':') {
+            if !name.is_empty() {
+                if let Ok(id) = id_str.parse::<u64>() {
+                    return Self::custom(Snowflake::new(id), name).with_animated(animated);
+                }
+            }
         }
 
         Self::unicode(value)

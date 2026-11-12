@@ -242,7 +242,7 @@ pub(crate) fn base64(value: &Value, path: &str) -> Result<Vec<u8>, CastError> {
 
 fn decode_base64(text: &str) -> Option<Vec<u8>> {
     let bytes = text.as_bytes();
-    if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
+    if bytes.is_empty() || bytes.len() % 4 != 0 {
         return None;
     }
 
@@ -252,7 +252,7 @@ fn decode_base64(text: &str) -> Option<Vec<u8>> {
     }
 
     let mut decoded = Vec::with_capacity(bytes.len() / 4 * 3 - padding);
-    for chunk in bytes.as_chunks::<4>().0 {
+    for chunk in bytes.chunks_exact(4) {
         let mut values = [0_u8; 4];
         for (index, byte) in chunk.iter().enumerate() {
             values[index] = if *byte == b'=' {
