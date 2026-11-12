@@ -61,6 +61,18 @@ impl Webhook {
         format!("webhooks/{}/{}", self.id, self.token)
     }
 
+    /// Returns the path for editing a webhook message.
+    #[must_use]
+    pub fn edit_message_path(&self, message_id: u64) -> String {
+        format!("{}/messages/{message_id}", self.execute_path())
+    }
+
+    /// Returns the path for deleting a webhook message.
+    #[must_use]
+    pub fn delete_message_path(&self, message_id: u64) -> String {
+        self.edit_message_path(message_id)
+    }
+
     /// Builds a message request payload in the project JSON representation.
     #[must_use]
     pub fn message(&self, message: WebhookMessage) -> String {
