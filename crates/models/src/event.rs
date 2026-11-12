@@ -1283,6 +1283,68 @@ impl MessagePollVote {
     }
 }
 
+/// The payload of `GUILD_MEMBERS_CHUNK` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GuildMembersChunk {
+    /// The ID of the guild.
+    pub guild_id: Snowflake,
+    /// Set of guild members.
+    pub members: Vec<Member>,
+    /// Chunk index in the expected response (0 <= chunk_index < chunk_count).
+    pub chunk_index: u32,
+    /// Total number of expected chunk responses.
+    pub chunk_count: u32,
+    /// If passing an invalid ID to `REQUEST_GUILD_MEMBERS`, it will be returned here.
+    pub not_found: Vec<Snowflake>,
+    /// Presences of the returned members.
+    pub presences: Vec<PresenceUpdate>,
+    /// Nonce used in the Guild Members Request.
+    pub nonce: Option<String>,
+}
+
+impl GuildMembersChunk {
+    /// Decodes a `GUILD_MEMBERS_CHUNK` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "guild_members_chunk")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let guild_id = cast::required_snowflake(object, path, "guild_id")?;
+        let members = cast::optional_array_of(
+            object,
+            path,
+            "members",
+            |v, p| Member::from_value_at(v, p, guild_id, &[]),
+        )?
+        .unwrap_or_default();
+        let presences = cast::optional_array_of(
+            object,
+            path,
+            "presences",
+            PresenceUpdate::from_value_at,
+        )?
+        .unwrap_or_default();
+        let not_found = cast::optional_array_of(
+            object,
+            path,
+            "not_found",
+            |v, p| cast::snowflake(v, p),
+        )?
+        .unwrap_or_default();
+
+        Ok(Self {
+            guild_id,
+            members,
+            chunk_index: cast::required_u32(object, path, "chunk_index")?,
+            chunk_count: cast::required_u32(object, path, "chunk_count")?,
+            not_found,
+            presences,
+            nonce: cast::optional_string(object, path, "nonce")?.map(str::to_owned),
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -1317,6 +1379,8 @@ pub enum Event {
     GuildMemberRemove(GuildMemberRemove),
     /// A member was updated.
     GuildMemberUpdate(Member),
+    /// A chunk of guild members was returned.
+    GuildMembersChunk(GuildMembersChunk),
     /// A role was created.
     GuildRoleCreate(RoleEvent),
     /// A role was updated.
@@ -1483,6 +1547,7 @@ impl Event {
                 data,
             )?)),
             "GUILD_MEMBER_UPDATE" => Ok(Self::GuildMemberUpdate(member(data)?)),
+            "GUILD_MEMBERS_CHUNK" => Ok(Self::GuildMembersChunk(GuildMembersChunk::from_value(data)?)),
             "GUILD_ROLE_CREATE" => Ok(Self::GuildRoleCreate(RoleEvent::from_value(data)?)),
             "GUILD_ROLE_UPDATE" => Ok(Self::GuildRoleUpdate(RoleEvent::from_value(data)?)),
             "GUILD_ROLE_DELETE" => Ok(Self::GuildRoleDelete(RoleDelete::from_value(data)?)),
@@ -1618,6 +1683,7 @@ impl Event {
             Self::GuildMemberAdd(_) => "GUILD_MEMBER_ADD",
             Self::GuildMemberRemove(_) => "GUILD_MEMBER_REMOVE",
             Self::GuildMemberUpdate(_) => "GUILD_MEMBER_UPDATE",
+            Self::GuildMembersChunk(_) => "GUILD_MEMBERS_CHUNK",
             Self::GuildRoleCreate(_) => "GUILD_ROLE_CREATE",
             Self::GuildRoleUpdate(_) => "GUILD_ROLE_UPDATE",
             Self::GuildRoleDelete(_) => "GUILD_ROLE_DELETE",
