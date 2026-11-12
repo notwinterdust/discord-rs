@@ -1345,6 +1345,66 @@ impl GuildMembersChunk {
     }
 }
 
+/// A permission item for an application command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CommandPermission {
+    /// ID of the role, user, or channel.
+    pub id: Snowflake,
+    /// Type of permission target (1: Role, 2: User, 3: Channel).
+    pub kind: u8,
+    /// Whether permission is granted or denied.
+    pub permission: bool,
+}
+
+impl CommandPermission {
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            kind: cast::required_u16(object, path, "type")? as u8,
+            permission: cast::required_bool(object, path, "permission")?,
+        })
+    }
+}
+
+/// The payload of `APPLICATION_COMMAND_PERMISSIONS_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommandPermissionsUpdate {
+    /// ID of the command or the application ID for default permissions.
+    pub id: Snowflake,
+    /// ID of the application the command belongs to.
+    pub application_id: Snowflake,
+    /// ID of the guild.
+    pub guild_id: Snowflake,
+    /// The permissions for the command in the guild.
+    pub permissions: Vec<CommandPermission>,
+}
+
+impl CommandPermissionsUpdate {
+    /// Decodes an `APPLICATION_COMMAND_PERMISSIONS_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "command_permissions_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let permissions = cast::optional_array_of(
+            object,
+            path,
+            "permissions",
+            CommandPermission::from_value_at,
+        )?
+        .unwrap_or_default();
+
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            application_id: cast::required_snowflake(object, path, "application_id")?,
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            permissions,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -1469,6 +1529,8 @@ pub enum Event {
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
     InteractionCreate(Interaction),
+    /// Application command permissions were updated.
+    ApplicationCommandPermissionsUpdate(CommandPermissionsUpdate),
     /// An invite was created.
     InviteCreate(Invite),
     /// An invite was deleted.
@@ -1637,6 +1699,9 @@ impl Event {
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
             "INTERACTION_CREATE" => Ok(Self::InteractionCreate(Interaction::from_value(data)?)),
+            "APPLICATION_COMMAND_PERMISSIONS_UPDATE" => Ok(Self::ApplicationCommandPermissionsUpdate(
+                CommandPermissionsUpdate::from_value(data)?,
+            )),
             "INVITE_CREATE" => Ok(Self::InviteCreate(Invite::from_value(data)?)),
             "INVITE_DELETE" => Ok(Self::InviteDelete(Invite::from_value(data)?)),
             "WEBHOOKS_UPDATE" => Ok(Self::WebhooksUpdate(WebhooksUpdate::from_value(data)?)),
@@ -1728,6 +1793,7 @@ impl Event {
             Self::MessagePollVoteRemove(_) => "MESSAGE_POLL_VOTE_REMOVE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
+            Self::ApplicationCommandPermissionsUpdate(_) => "APPLICATION_COMMAND_PERMISSIONS_UPDATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
             Self::InviteDelete(_) => "INVITE_DELETE",
             Self::WebhooksUpdate(_) => "WEBHOOKS_UPDATE",
