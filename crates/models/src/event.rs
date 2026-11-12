@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use abc::Snowflake;
 use data::Value;
 use data::gateway::{GatewayOpcode, GatewayPayload};
-use enums::{ChannelType, ReactionType};
+use enums::{ActivityType, ChannelType, ReactionType, Status};
 
 use crate::cast::{self, CastError};
 use crate::{
@@ -627,6 +627,69 @@ impl GuildBanEvent {
     }
 }
 
+/// A single activity engaged in by a user.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Activity {
+    /// Activity name.
+    pub name: String,
+    /// Activity type.
+    pub kind: ActivityType,
+    /// Stream URL if streaming.
+    pub url: Option<String>,
+}
+
+impl Activity {
+    /// Decodes an activity from a value.
+    pub fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let kind_raw = cast::optional_u8(object, path, "type")?.unwrap_or(0);
+        let kind = ActivityType::from_value(kind_raw).unwrap_or(ActivityType::Playing);
+        Ok(Self {
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            kind,
+            url: cast::optional_string(object, path, "url")?.map(str::to_owned),
+        })
+    }
+}
+
+/// The payload of a `PRESENCE_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PresenceUpdate {
+    /// The user whose presence was updated.
+    pub user_id: Snowflake,
+    /// The guild the presence update occurred in.
+    pub guild_id: Option<Snowflake>,
+    /// The user's status.
+    pub status: Status,
+    /// The user's active activities.
+    pub activities: Vec<Activity>,
+}
+
+impl PresenceUpdate {
+    /// Decodes a `PRESENCE_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "presence_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let user_obj = cast::required_object(object, path, "user")?;
+        let user_id = cast::required_snowflake(user_obj, &cast::field_path(path, "user"), "id")?;
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?;
+        let status_str = cast::optional_string(object, path, "status")?.unwrap_or("offline");
+        let status = Status::from_str(status_str).unwrap_or(Status::Offline);
+        let activities = cast::optional_array_of(object, path, "activities", Activity::from_value_at)?
+            .unwrap_or_default();
+
+        Ok(Self {
+            user_id,
+            guild_id,
+            status,
+            activities,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -701,6 +764,8 @@ pub enum Event {
     UserUpdate(User),
     /// A user started typing.
     TypingStart(TypingStart),
+    /// A user's presence or status was updated.
+    PresenceUpdate(PresenceUpdate),
     /// A scheduled event was created.
     GuildScheduledEventCreate(GuildScheduledEvent),
     /// A scheduled event was updated.
@@ -799,6 +864,7 @@ impl Event {
             "WEBHOOKS_UPDATE" => Ok(Self::WebhooksUpdate(WebhooksUpdate::from_value(data)?)),
             "USER_UPDATE" => Ok(Self::UserUpdate(User::from_value(data)?)),
             "TYPING_START" => Ok(Self::TypingStart(TypingStart::from_value(data)?)),
+            "PRESENCE_UPDATE" => Ok(Self::PresenceUpdate(PresenceUpdate::from_value(data)?)),
             "GUILD_SCHEDULED_EVENT_CREATE" => Ok(Self::GuildScheduledEventCreate(
                 GuildScheduledEvent::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -859,6 +925,7 @@ impl Event {
             Self::WebhooksUpdate(_) => "WEBHOOKS_UPDATE",
             Self::UserUpdate(_) => "USER_UPDATE",
             Self::TypingStart(_) => "TYPING_START",
+            Self::PresenceUpdate(_) => "PRESENCE_UPDATE",
             Self::GuildScheduledEventCreate(_) => "GUILD_SCHEDULED_EVENT_CREATE",
             Self::GuildScheduledEventUpdate(_) => "GUILD_SCHEDULED_EVENT_UPDATE",
             Self::GuildScheduledEventDelete(_) => "GUILD_SCHEDULED_EVENT_DELETE",
@@ -1476,6 +1543,35 @@ mod tests {
                 assert_eq!(entry.user_id, Some(Snowflake::new(200)));
             }
             other => panic!("expected GuildAuditLogEntryCreate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decodes_presence_update_event() {
+        let presence_raw = r#"{
+            "user": {
+                "id": "300"
+            },
+            "guild_id": "100",
+            "status": "dnd",
+            "activities": [
+                {
+                    "name": "Rust compiler",
+                    "type": 0
+                }
+            ]
+        }"#;
+
+        match event("PRESENCE_UPDATE", presence_raw) {
+            Event::PresenceUpdate(presence) => {
+                assert_eq!(presence.user_id, Snowflake::new(300));
+                assert_eq!(presence.guild_id, Some(Snowflake::new(100)));
+                assert_eq!(presence.status, enums::Status::DoNotDisturb);
+                assert_eq!(presence.activities.len(), 1);
+                assert_eq!(presence.activities[0].name, "Rust compiler");
+                assert_eq!(presence.activities[0].kind, enums::ActivityType::Playing);
+            }
+            other => panic!("expected PresenceUpdate, got {other:?}"),
         }
     }
 
