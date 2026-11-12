@@ -314,6 +314,42 @@ impl ClientCache {
         self.members.get(&guild_id)
     }
 
+    // ---- cross-reference helpers ----------------------------------------
+
+    /// Looks up the guild that owns a channel (by scanning guild caches).
+    ///
+    /// This is an O(n) scan over guild IDs. For large bots prefer storing
+    /// the mapping explicitly.
+    #[must_use]
+    pub fn guild_of_channel(&self, channel_id: u64) -> Option<&models::Guild> {
+        // Try to find the channel in cache, then look up its guild.
+        let ch = self.channels.get(channel_id)?;
+        let guild_id = ch.guild_id.get();
+        self.guilds.get(guild_id)
+    }
+
+    /// Returns the roles that a member currently holds, resolved from the cache.
+    #[must_use]
+    pub fn member_roles(
+        &self,
+        guild_id: u64,
+        user_id: u64,
+    ) -> Option<Vec<&models::Role>> {
+        let member = self.member(guild_id, user_id)?;
+        Some(
+            member
+                .role_ids()
+                .filter_map(|rid| self.roles.get(rid.get()))
+                .collect(),
+        )
+    }
+
+    /// Returns the presence for a user, if cached.
+    #[must_use]
+    pub fn presence(&self, user_id: u64) -> Option<&models::PresenceUpdate> {
+        self.presences.get(user_id)
+    }
+
     // ---- private helpers -----------------------------------------------
 
     fn cache_guild(&mut self, guild: models::Guild) {
@@ -387,5 +423,110 @@ mod tests {
         assert_eq!(c.len(), 1);
         assert!(c.get(2).is_some());
         assert!(c.get(1).is_none());
+    }
+
+    // ---- ClientCache event-driven tests --------------------------------
+
+    // Build minimal model objects from JSON strings using the models parser.
+    fn value(raw: &str) -> data::Value {
+        data::json::from_str(raw).unwrap()
+    }
+
+    fn guild_event(name: &str, raw: &str) -> models::Event {
+        models::Event::from_value(name, &value(raw)).unwrap()
+    }
+
+    /// A minimal GUILD_CREATE JSON (no members/channels/roles needed for unit
+    /// testing the guild-level cache paths).
+    fn minimal_guild(id: u64, name: &str) -> String {
+        format!(
+            r#"{{
+                "id": "{id}",
+                "name": "{name}",
+                "icon": null,
+                "splash": null,
+                "discovery_splash": null,
+                "owner_id": "1",
+                "afk_timeout": 300,
+                "verification_level": 0,
+                "default_message_notifications": 0,
+                "explicit_content_filter": 0,
+                "roles": [],
+                "emojis": [],
+                "features": [],
+                "mfa_level": 0,
+                "system_channel_flags": 0,
+                "premium_tier": 0,
+                "nsfw_level": 0,
+                "premium_progress_bar_enabled": false,
+                "safety_alerts_channel_id": null,
+                "members": [],
+                "channels": [],
+                "presences": [],
+                "unavailable": false
+            }}"#
+        )
+    }
+
+    #[test]
+    fn guild_lifecycle_populates_and_evicts_cache() {
+        let mut cache = make_cache();
+
+        // GUILD_CREATE populates
+        let ev = guild_event("GUILD_CREATE", &minimal_guild(10, "Test Guild"));
+        assert!(cache.update(&ev));
+        assert!(cache.guilds.get(10).is_some());
+
+        // GUILD_UPDATE replaces
+        let ev = guild_event("GUILD_UPDATE", &minimal_guild(10, "Updated Guild"));
+        assert!(cache.update(&ev));
+        assert_eq!(cache.guilds.get(10).unwrap().name, "Updated Guild");
+
+        // GUILD_DELETE evicts
+        let del_raw = r#"{"id":"10","unavailable":true}"#;
+        let ev = guild_event("GUILD_DELETE", del_raw);
+        assert!(cache.update(&ev));
+        assert!(cache.guilds.get(10).is_none());
+    }
+
+    #[test]
+    fn message_lifecycle_populates_and_evicts_cache() {
+        let mut cache = make_cache();
+
+        let msg_raw = r#"{
+            "id": "99",
+            "channel_id": "5",
+            "author": {"id": "1", "username": "u", "discriminator": "0", "global_name": null},
+            "content": "hello",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "edited_timestamp": null,
+            "tts": false,
+            "mention_everyone": false,
+            "mentions": [],
+            "mention_roles": [],
+            "attachments": [],
+            "embeds": [],
+            "pinned": false,
+            "type": 0
+        }"#;
+
+        // MESSAGE_CREATE
+        let ev = guild_event("MESSAGE_CREATE", msg_raw);
+        assert!(cache.update(&ev));
+        assert!(cache.messages.get(99).is_some());
+
+        // MESSAGE_DELETE
+        let del_raw = r#"{"id":"99","channel_id":"5"}"#;
+        let ev = guild_event("MESSAGE_DELETE", del_raw);
+        assert!(cache.update(&ev));
+        assert!(cache.messages.get(99).is_none());
+    }
+
+    #[test]
+    fn unrecognised_events_do_not_mutate_cache() {
+        let mut cache = make_cache();
+        let ev = models::Event::Resumed;
+        assert!(!cache.update(&ev));
+        assert!(cache.guilds.is_empty());
     }
 }
