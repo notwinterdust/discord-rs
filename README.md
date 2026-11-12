@@ -38,7 +38,7 @@ Here is how to set up and run a bot using the high-level `BotBuilder`:
 
 ```rust,no_run
 use std::time::Duration;
-use discord_rs::{BotBuilder, Event, Intents};
+use discord_rust::{BotBuilder, Event, Intents};
 
 fn main() {
     let mut bot = BotBuilder::new()
