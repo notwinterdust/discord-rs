@@ -15,6 +15,7 @@ pub mod client;
 pub mod connection;
 pub mod events;
 pub mod gateway;
+pub mod health;
 pub mod http;
 pub mod shard;
 
@@ -29,5 +30,6 @@ pub use events::{EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, Ru
 pub use gateway::{
     Gateway, GatewayAction, GatewayConfig, GatewayError, GatewayState, ReconnectPolicy,
 };
+pub use health::HealthReport;
 pub use http::{HttpMethod, HttpRequest, HttpResponse, RateLimit, RateLimitScope};
 pub use shard::Shard;
