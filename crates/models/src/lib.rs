@@ -80,6 +80,7 @@ pub use event::{
     ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete, RoleEvent, ThreadDelete,
     TypingStart, UnavailableGuild, WebhooksUpdate,
 };
+pub use event::names;
 pub use forum::ForumTag;
 pub use guild::Guild;
 pub use interaction::{

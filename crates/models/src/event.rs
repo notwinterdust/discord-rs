@@ -40,6 +40,20 @@ pub struct RawEvent {
     pub data: Value,
 }
 
+/// Common gateway dispatch names.
+pub mod names {
+    /// Ready event.
+    pub const READY: &str = "READY";
+    /// Message creation event.
+    pub const MESSAGE_CREATE: &str = "MESSAGE_CREATE";
+    /// Message update event.
+    pub const MESSAGE_UPDATE: &str = "MESSAGE_UPDATE";
+    /// Message deletion event.
+    pub const MESSAGE_DELETE: &str = "MESSAGE_DELETE";
+    /// Guild creation event.
+    pub const GUILD_CREATE: &str = "GUILD_CREATE";
+}
+
 impl RawEvent {
     /// Creates a raw event.
     #[must_use]
