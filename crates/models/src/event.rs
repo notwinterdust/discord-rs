@@ -678,8 +678,9 @@ impl PresenceUpdate {
         let guild_id = cast::optional_snowflake(object, path, "guild_id")?;
         let status_str = cast::optional_string(object, path, "status")?.unwrap_or("offline");
         let status = Status::from_str(status_str).unwrap_or(Status::Offline);
-        let activities = cast::optional_array_of(object, path, "activities", Activity::from_value_at)?
-            .unwrap_or_default();
+        let activities =
+            cast::optional_array_of(object, path, "activities", Activity::from_value_at)?
+                .unwrap_or_default();
 
         Ok(Self {
             user_id,
@@ -849,10 +850,16 @@ impl AutoModActionExecution {
             user_id: cast::required_snowflake(object, path, "user_id")?,
             channel_id: cast::optional_snowflake(object, path, "channel_id")?,
             message_id: cast::optional_snowflake(object, path, "message_id")?,
-            alert_system_message_id: cast::optional_snowflake(object, path, "alert_system_message_id")?,
+            alert_system_message_id: cast::optional_snowflake(
+                object,
+                path,
+                "alert_system_message_id",
+            )?,
             content: cast::optional_string(object, path, "content")?.map(str::to_owned),
-            matched_keyword: cast::optional_string(object, path, "matched_keyword")?.map(str::to_owned),
-            matched_content: cast::optional_string(object, path, "matched_content")?.map(str::to_owned),
+            matched_keyword: cast::optional_string(object, path, "matched_keyword")?
+                .map(str::to_owned),
+            matched_content: cast::optional_string(object, path, "matched_content")?
+                .map(str::to_owned),
         })
     }
 }
@@ -1083,9 +1090,8 @@ impl ThreadListSync {
         let object = cast::object(value, path)?;
         let guild_id = cast::required_snowflake(object, path, "guild_id")?;
 
-        let channel_ids = cast::optional_array_of(object, path, "channel_ids", |v, p| {
-            cast::snowflake(v, p)
-        })?;
+        let channel_ids =
+            cast::optional_array_of(object, path, "channel_ids", |v, p| cast::snowflake(v, p))?;
 
         let threads = cast::optional_array_of(object, path, "threads", |v, _| channel(v))?
             .unwrap_or_default();
@@ -1137,10 +1143,11 @@ impl ThreadMembersUpdate {
         })?
         .unwrap_or_default();
 
-        let removed_member_ids = cast::optional_array_of(object, path, "removed_member_ids", |v, p| {
-            cast::snowflake(v, p)
-        })?
-        .unwrap_or_default();
+        let removed_member_ids =
+            cast::optional_array_of(object, path, "removed_member_ids", |v, p| {
+                cast::snowflake(v, p)
+            })?
+            .unwrap_or_default();
 
         Ok(Self {
             id,
@@ -1236,10 +1243,9 @@ impl SubscriptionEvent {
 
     pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
         let object = cast::object(value, path)?;
-        let sku_ids = cast::optional_array_of(object, path, "sku_ids", |v, p| {
-            cast::snowflake(v, p)
-        })?
-        .unwrap_or_default();
+        let sku_ids =
+            cast::optional_array_of(object, path, "sku_ids", |v, p| cast::snowflake(v, p))?
+                .unwrap_or_default();
 
         Ok(Self {
             id: cast::required_snowflake(object, path, "id")?,
@@ -1311,27 +1317,16 @@ impl GuildMembersChunk {
     pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
         let object = cast::object(value, path)?;
         let guild_id = cast::required_snowflake(object, path, "guild_id")?;
-        let members = cast::optional_array_of(
-            object,
-            path,
-            "members",
-            |v, p| Member::from_value_at(v, p, guild_id, &[]),
-        )?
+        let members = cast::optional_array_of(object, path, "members", |v, p| {
+            Member::from_value_at(v, p, guild_id, &[])
+        })?
         .unwrap_or_default();
-        let presences = cast::optional_array_of(
-            object,
-            path,
-            "presences",
-            PresenceUpdate::from_value_at,
-        )?
-        .unwrap_or_default();
-        let not_found = cast::optional_array_of(
-            object,
-            path,
-            "not_found",
-            |v, p| cast::snowflake(v, p),
-        )?
-        .unwrap_or_default();
+        let presences =
+            cast::optional_array_of(object, path, "presences", PresenceUpdate::from_value_at)?
+                .unwrap_or_default();
+        let not_found =
+            cast::optional_array_of(object, path, "not_found", |v, p| cast::snowflake(v, p))?
+                .unwrap_or_default();
 
         Ok(Self {
             guild_id,
@@ -1609,7 +1604,9 @@ impl Event {
                 data,
             )?)),
             "GUILD_MEMBER_UPDATE" => Ok(Self::GuildMemberUpdate(member(data)?)),
-            "GUILD_MEMBERS_CHUNK" => Ok(Self::GuildMembersChunk(GuildMembersChunk::from_value(data)?)),
+            "GUILD_MEMBERS_CHUNK" => Ok(Self::GuildMembersChunk(GuildMembersChunk::from_value(
+                data,
+            )?)),
             "GUILD_ROLE_CREATE" => Ok(Self::GuildRoleCreate(RoleEvent::from_value(data)?)),
             "GUILD_ROLE_UPDATE" => Ok(Self::GuildRoleUpdate(RoleEvent::from_value(data)?)),
             "GUILD_ROLE_DELETE" => Ok(Self::GuildRoleDelete(RoleDelete::from_value(data)?)),
@@ -1633,17 +1630,15 @@ impl Event {
             )),
             "GUILD_BAN_ADD" => Ok(Self::GuildBanAdd(GuildBanEvent::from_value(data)?)),
             "GUILD_BAN_REMOVE" => Ok(Self::GuildBanRemove(GuildBanEvent::from_value(data)?)),
-            "GUILD_EMOJIS_UPDATE" => {
-                Ok(Self::GuildEmojisUpdate(GuildEmojisUpdate::from_value(data)?))
-            }
+            "GUILD_EMOJIS_UPDATE" => Ok(Self::GuildEmojisUpdate(GuildEmojisUpdate::from_value(
+                data,
+            )?)),
             "GUILD_STICKERS_UPDATE" => Ok(Self::GuildStickersUpdate(
                 GuildStickersUpdate::from_value(data)?,
             )),
-            "GUILD_SOUNDBOARD_SOUND_CREATE" | "GUILD_SOUNDBOARD_SOUND_UPDATE" => {
-                Ok(Self::GuildSoundboardSoundCreate(
-                    SoundboardSoundEvent::from_value(data)?,
-                ))
-            }
+            "GUILD_SOUNDBOARD_SOUND_CREATE" | "GUILD_SOUNDBOARD_SOUND_UPDATE" => Ok(
+                Self::GuildSoundboardSoundCreate(SoundboardSoundEvent::from_value(data)?),
+            ),
             "GUILD_SOUNDBOARD_SOUND_DELETE" => Ok(Self::GuildSoundboardSoundDelete(
                 SoundboardSoundEvent::from_value(data)?,
             )),
@@ -1662,13 +1657,19 @@ impl Event {
             "GUILD_INTEGRATIONS_UPDATE" => Ok(Self::GuildIntegrationsUpdate(
                 GuildIntegrationsUpdate::from_value(data)?,
             )),
-            "INTEGRATION_CREATE" => Ok(Self::IntegrationCreate(IntegrationEvent::from_value(data)?)),
-            "INTEGRATION_UPDATE" => Ok(Self::IntegrationUpdate(IntegrationEvent::from_value(data)?)),
-            "INTEGRATION_DELETE" => Ok(Self::IntegrationDelete(IntegrationDelete::from_value(data)?)),
-            "VOICE_STATE_UPDATE" => Ok(Self::VoiceStateUpdate(VoiceStateUpdate::from_value(data)?)),
-            "VOICE_SERVER_UPDATE" => {
-                Ok(Self::VoiceServerUpdate(VoiceServerUpdate::from_value(data)?))
+            "INTEGRATION_CREATE" => {
+                Ok(Self::IntegrationCreate(IntegrationEvent::from_value(data)?))
             }
+            "INTEGRATION_UPDATE" => {
+                Ok(Self::IntegrationUpdate(IntegrationEvent::from_value(data)?))
+            }
+            "INTEGRATION_DELETE" => Ok(Self::IntegrationDelete(IntegrationDelete::from_value(
+                data,
+            )?)),
+            "VOICE_STATE_UPDATE" => Ok(Self::VoiceStateUpdate(VoiceStateUpdate::from_value(data)?)),
+            "VOICE_SERVER_UPDATE" => Ok(Self::VoiceServerUpdate(VoiceServerUpdate::from_value(
+                data,
+            )?)),
             "STAGE_INSTANCE_CREATE" => Ok(Self::StageInstanceCreate(
                 StageInstanceEvent::from_value(data)?,
             )),
@@ -1680,28 +1681,55 @@ impl Event {
             )),
             "THREAD_LIST_SYNC" => Ok(Self::ThreadListSync(ThreadListSync::from_value(data)?)),
             "THREAD_MEMBER_UPDATE" => {
-                let tid = cast::optional_snowflake(cast::object(data, "thread_member_update")?, "thread_member_update", "id")?.unwrap_or_default();
-                Ok(Self::ThreadMemberUpdate(crate::ThreadMember::from_value(data, tid)?))
+                let tid = cast::optional_snowflake(
+                    cast::object(data, "thread_member_update")?,
+                    "thread_member_update",
+                    "id",
+                )?
+                .unwrap_or_default();
+                Ok(Self::ThreadMemberUpdate(crate::ThreadMember::from_value(
+                    data, tid,
+                )?))
             }
-            "THREAD_MEMBERS_UPDATE" => {
-                Ok(Self::ThreadMembersUpdate(ThreadMembersUpdate::from_value(data)?))
+            "THREAD_MEMBERS_UPDATE" => Ok(Self::ThreadMembersUpdate(
+                ThreadMembersUpdate::from_value(data)?,
+            )),
+            "CHANNEL_PINS_UPDATE" => Ok(Self::ChannelPinsUpdate(ChannelPinsUpdate::from_value(
+                data,
+            )?)),
+            "ENTITLEMENT_CREATE" => {
+                Ok(Self::EntitlementCreate(EntitlementEvent::from_value(data)?))
             }
-            "CHANNEL_PINS_UPDATE" => Ok(Self::ChannelPinsUpdate(ChannelPinsUpdate::from_value(data)?)),
-            "ENTITLEMENT_CREATE" => Ok(Self::EntitlementCreate(EntitlementEvent::from_value(data)?)),
-            "ENTITLEMENT_UPDATE" => Ok(Self::EntitlementUpdate(EntitlementEvent::from_value(data)?)),
-            "ENTITLEMENT_DELETE" => Ok(Self::EntitlementDelete(EntitlementEvent::from_value(data)?)),
-            "SUBSCRIPTION_CREATE" => Ok(Self::SubscriptionCreate(SubscriptionEvent::from_value(data)?)),
-            "SUBSCRIPTION_UPDATE" => Ok(Self::SubscriptionUpdate(SubscriptionEvent::from_value(data)?)),
-            "SUBSCRIPTION_DELETE" => Ok(Self::SubscriptionDelete(SubscriptionEvent::from_value(data)?)),
-            "MESSAGE_POLL_VOTE_ADD" => Ok(Self::MessagePollVoteAdd(MessagePollVote::from_value(data)?)),
-            "MESSAGE_POLL_VOTE_REMOVE" => Ok(Self::MessagePollVoteRemove(MessagePollVote::from_value(data)?)),
+            "ENTITLEMENT_UPDATE" => {
+                Ok(Self::EntitlementUpdate(EntitlementEvent::from_value(data)?))
+            }
+            "ENTITLEMENT_DELETE" => {
+                Ok(Self::EntitlementDelete(EntitlementEvent::from_value(data)?))
+            }
+            "SUBSCRIPTION_CREATE" => Ok(Self::SubscriptionCreate(SubscriptionEvent::from_value(
+                data,
+            )?)),
+            "SUBSCRIPTION_UPDATE" => Ok(Self::SubscriptionUpdate(SubscriptionEvent::from_value(
+                data,
+            )?)),
+            "SUBSCRIPTION_DELETE" => Ok(Self::SubscriptionDelete(SubscriptionEvent::from_value(
+                data,
+            )?)),
+            "MESSAGE_POLL_VOTE_ADD" => {
+                Ok(Self::MessagePollVoteAdd(MessagePollVote::from_value(data)?))
+            }
+            "MESSAGE_POLL_VOTE_REMOVE" => Ok(Self::MessagePollVoteRemove(
+                MessagePollVote::from_value(data)?,
+            )),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
             "INTERACTION_CREATE" => Ok(Self::InteractionCreate(Interaction::from_value(data)?)),
-            "APPLICATION_COMMAND_PERMISSIONS_UPDATE" => Ok(Self::ApplicationCommandPermissionsUpdate(
-                CommandPermissionsUpdate::from_value(data)?,
-            )),
+            "APPLICATION_COMMAND_PERMISSIONS_UPDATE" => {
+                Ok(Self::ApplicationCommandPermissionsUpdate(
+                    CommandPermissionsUpdate::from_value(data)?,
+                ))
+            }
             "INVITE_CREATE" => Ok(Self::InviteCreate(Invite::from_value(data)?)),
             "INVITE_DELETE" => Ok(Self::InviteDelete(Invite::from_value(data)?)),
             "WEBHOOKS_UPDATE" => Ok(Self::WebhooksUpdate(WebhooksUpdate::from_value(data)?)),
@@ -1793,7 +1821,9 @@ impl Event {
             Self::MessagePollVoteRemove(_) => "MESSAGE_POLL_VOTE_REMOVE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
-            Self::ApplicationCommandPermissionsUpdate(_) => "APPLICATION_COMMAND_PERMISSIONS_UPDATE",
+            Self::ApplicationCommandPermissionsUpdate(_) => {
+                "APPLICATION_COMMAND_PERMISSIONS_UPDATE"
+            }
             Self::InviteCreate(_) => "INVITE_CREATE",
             Self::InviteDelete(_) => "INVITE_DELETE",
             Self::WebhooksUpdate(_) => "WEBHOOKS_UPDATE",
@@ -2580,7 +2610,8 @@ mod tests {
             other => panic!("expected MessagePollVoteAdd, got {other:?}"),
         }
 
-        let raw_guild = r#"{"user_id":"1","channel_id":"2","message_id":"3","guild_id":"99","answer_id":2}"#;
+        let raw_guild =
+            r#"{"user_id":"1","channel_id":"2","message_id":"3","guild_id":"99","answer_id":2}"#;
         match event("MESSAGE_POLL_VOTE_REMOVE", raw_guild) {
             Event::MessagePollVoteRemove(v) => {
                 assert_eq!(v.guild_id, Some(Snowflake::new(99)));
@@ -2591,7 +2622,9 @@ mod tests {
 
         // name round-trip
         assert_eq!(
-            Event::from_value("MESSAGE_POLL_VOTE_ADD", &value(raw)).unwrap().name(),
+            Event::from_value("MESSAGE_POLL_VOTE_ADD", &value(raw))
+                .unwrap()
+                .name(),
             "MESSAGE_POLL_VOTE_ADD"
         );
     }
@@ -2636,7 +2669,9 @@ mod tests {
         ));
 
         assert_eq!(
-            Event::from_value("GUILD_MEMBERS_CHUNK", &value(raw)).unwrap().name(),
+            Event::from_value("GUILD_MEMBERS_CHUNK", &value(raw))
+                .unwrap()
+                .name(),
             "GUILD_MEMBERS_CHUNK"
         );
     }

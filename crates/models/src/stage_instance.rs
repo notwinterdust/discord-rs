@@ -49,9 +49,10 @@ impl StageInstance {
         let channel_id = cast::required_snowflake(obj, path, "channel_id")?;
         let topic = cast::required_string(obj, path, "topic")?.to_owned();
         let privacy_raw = cast::required_u16(obj, path, "privacy_level")? as u8;
-        let privacy_level = StagePrivacyLevel::from_value(privacy_raw)
-            .unwrap_or(StagePrivacyLevel::GuildOnly);
-        let guild_scheduled_event_id = cast::optional_snowflake(obj, path, "guild_scheduled_event_id")?;
+        let privacy_level =
+            StagePrivacyLevel::from_value(privacy_raw).unwrap_or(StagePrivacyLevel::GuildOnly);
+        let guild_scheduled_event_id =
+            cast::optional_snowflake(obj, path, "guild_scheduled_event_id")?;
 
         Ok(Self {
             id,

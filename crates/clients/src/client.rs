@@ -478,7 +478,9 @@ impl PendingResponse {
     ///
     /// Returns [`HttpError`] if the request failed or worker thread disconnected.
     pub fn wait(self) -> Result<HttpResponse, HttpError> {
-        self.receiver.recv().map_err(|_| HttpError::transport("worker thread disconnected"))?
+        self.receiver
+            .recv()
+            .map_err(|_| HttpError::transport("worker thread disconnected"))?
     }
 
     /// Waits for the HTTP response up to the given timeout.
@@ -489,8 +491,12 @@ impl PendingResponse {
     pub fn wait_timeout(self, timeout: Duration) -> Result<HttpResponse, HttpError> {
         match self.receiver.recv_timeout(timeout) {
             Ok(result) => result,
-            Err(RecvTimeoutError::Timeout) => Err(HttpError::transport("request timed out waiting for response")),
-            Err(RecvTimeoutError::Disconnected) => Err(HttpError::transport("worker thread disconnected")),
+            Err(RecvTimeoutError::Timeout) => Err(HttpError::transport(
+                "request timed out waiting for response",
+            )),
+            Err(RecvTimeoutError::Disconnected) => {
+                Err(HttpError::transport("worker thread disconnected"))
+            }
         }
     }
 }
@@ -515,7 +521,10 @@ pub struct ThreadedRequestExecutor {
 impl ThreadedRequestExecutor {
     /// Spawns a new threaded request executor with the given number of worker threads.
     #[must_use]
-    pub fn new<T: Transport + Send + Sync + 'static>(transport: Arc<T>, worker_count: usize) -> Self {
+    pub fn new<T: Transport + Send + Sync + 'static>(
+        transport: Arc<T>,
+        worker_count: usize,
+    ) -> Self {
         let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
         let count = worker_count.max(1);
@@ -694,8 +703,8 @@ mod tests {
 
     #[test]
     fn threaded_request_executor_executes_requests_asynchronously() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
 
         struct ThreadSafeMockTransport {
             count: AtomicUsize,
@@ -713,11 +722,17 @@ mod tests {
         });
 
         let mut executor = super::ThreadedRequestExecutor::new(Arc::clone(&transport), 2);
-        let pending1 = executor.submit(HttpRequest::new(HttpMethod::Get, "users/@me")).unwrap();
-        let pending2 = executor.submit(HttpRequest::new(HttpMethod::Get, "gateway")).unwrap();
+        let pending1 = executor
+            .submit(HttpRequest::new(HttpMethod::Get, "users/@me"))
+            .unwrap();
+        let pending2 = executor
+            .submit(HttpRequest::new(HttpMethod::Get, "gateway"))
+            .unwrap();
 
         let resp1 = pending1.wait().unwrap();
-        let resp2 = pending2.wait_timeout(std::time::Duration::from_secs(2)).unwrap();
+        let resp2 = pending2
+            .wait_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
 
         assert_eq!(resp1.status, 200);
         assert_eq!(resp2.status, 200);

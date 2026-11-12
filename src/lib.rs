@@ -1,11 +1,6 @@
 #![forbid(unsafe_code)]
 //! # discord-rs
 //!
-//! A feature-rich, standard-library-only Discord API and Gateway library for Rust.
-//!
-//! Designed with zero external runtime dependencies (`async`/`tokio`-free, pure `std`),
-//! strict `#![forbid(unsafe_code)]`, and modular architecture.
-//!
 //! ## Modules
 //!
 //! - [`abc`]: Abstract base components (Snowflake, Colour, CDN Asset)

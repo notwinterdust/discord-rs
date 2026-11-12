@@ -75,9 +75,7 @@ impl Button {
 
     #[must_use]
     pub fn link(url: impl Into<String>, label: impl Into<String>) -> Self {
-        Self::new(ButtonStyle::Link)
-            .url(url)
-            .label(label)
+        Self::new(ButtonStyle::Link).url(url).label(label)
     }
 
     #[must_use]
@@ -256,10 +254,16 @@ impl StringSelect {
             object.insert("placeholder", Value::String(placeholder.clone()));
         }
         if let Some(min) = self.min_values {
-            object.insert("min_values", Value::Number(data::Number::from_u64(min as u64)));
+            object.insert(
+                "min_values",
+                Value::Number(data::Number::from_u64(min as u64)),
+            );
         }
         if let Some(max) = self.max_values {
-            object.insert("max_values", Value::Number(data::Number::from_u64(max as u64)));
+            object.insert(
+                "max_values",
+                Value::Number(data::Number::from_u64(max as u64)),
+            );
         }
         if self.disabled {
             object.insert("disabled", Value::Bool(true));
@@ -283,7 +287,11 @@ pub struct TextInput {
 
 impl TextInput {
     #[must_use]
-    pub fn new(custom_id: impl Into<String>, label: impl Into<String>, style: TextInputStyle) -> Self {
+    pub fn new(
+        custom_id: impl Into<String>,
+        label: impl Into<String>,
+        style: TextInputStyle,
+    ) -> Self {
         Self {
             custom_id: custom_id.into(),
             style,
@@ -347,10 +355,16 @@ impl TextInput {
             object.insert("required", Value::Bool(false));
         }
         if let Some(min) = self.min_length {
-            object.insert("min_length", Value::Number(data::Number::from_u64(min as u64)));
+            object.insert(
+                "min_length",
+                Value::Number(data::Number::from_u64(min as u64)),
+            );
         }
         if let Some(max) = self.max_length {
-            object.insert("max_length", Value::Number(data::Number::from_u64(max as u64)));
+            object.insert(
+                "max_length",
+                Value::Number(data::Number::from_u64(max as u64)),
+            );
         }
         if let Some(placeholder) = &self.placeholder {
             object.insert("placeholder", Value::String(placeholder.clone()));
@@ -659,7 +673,10 @@ mod tests {
             Value::Object(obj) => {
                 assert_eq!(obj.get("type"), Some(&Value::Number(2_u64.into())));
                 assert_eq!(obj.get("style"), Some(&Value::Number(1_u64.into())));
-                assert_eq!(obj.get("custom_id"), Some(&Value::String("btn_confirm".into())));
+                assert_eq!(
+                    obj.get("custom_id"),
+                    Some(&Value::String("btn_confirm".into()))
+                );
                 assert_eq!(obj.get("label"), Some(&Value::String("Confirm".into())));
                 assert_eq!(obj.get("disabled"), Some(&Value::Bool(true)));
                 assert_eq!(obj.get("sku_id"), Some(&Value::String("12345".into())));
@@ -676,15 +693,26 @@ mod tests {
             .max_values(3);
 
         for i in 0..25 {
-            assert!(select.add_option(SelectOption::new(format!("Choice {i}"), format!("val_{i}"))).is_ok());
+            assert!(
+                select
+                    .add_option(SelectOption::new(format!("Choice {i}"), format!("val_{i}")))
+                    .is_ok()
+            );
         }
-        assert!(select.add_option(SelectOption::new("overflow", "overflow")).is_err());
+        assert!(
+            select
+                .add_option(SelectOption::new("overflow", "overflow"))
+                .is_err()
+        );
 
         let val = select.to_value();
         match val {
             Value::Object(obj) => {
                 assert_eq!(obj.get("type"), Some(&Value::Number(3_u64.into())));
-                assert_eq!(obj.get("placeholder"), Some(&Value::String("Pick something".into())));
+                assert_eq!(
+                    obj.get("placeholder"),
+                    Some(&Value::String("Pick something".into()))
+                );
                 assert_eq!(obj.get("min_values"), Some(&Value::Number(1_u64.into())));
                 assert_eq!(obj.get("max_values"), Some(&Value::Number(3_u64.into())));
             }
@@ -706,9 +734,17 @@ mod tests {
 
         let mut btn_row = ActionRow::new();
         for i in 0..5 {
-            assert!(btn_row.add_button(Button::secondary(format!("b{i}"), "B")).is_ok());
+            assert!(
+                btn_row
+                    .add_button(Button::secondary(format!("b{i}"), "B"))
+                    .is_ok()
+            );
         }
-        assert!(btn_row.add_button(Button::secondary("overflow", "B")).is_err());
+        assert!(
+            btn_row
+                .add_button(Button::secondary("overflow", "B"))
+                .is_err()
+        );
 
         let mut container = Container::new();
         for _ in 0..10 {

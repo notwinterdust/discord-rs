@@ -915,7 +915,10 @@ impl AuditLogEntry {
 
         let (action_path, action_raw) = match cast::optional_u16(object, path, "action_type")? {
             Some(act) => (cast::field_path(path, "action_type"), act),
-            None => (cast::field_path(path, "action"), cast::required_u16(object, path, "action")?),
+            None => (
+                cast::field_path(path, "action"),
+                cast::required_u16(object, path, "action")?,
+            ),
         };
         let action = AuditLogAction::from_value(action_raw)
             .ok_or_else(|| CastError::invalid_value(&action_path, "an audit log action"))?;

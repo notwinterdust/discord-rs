@@ -32,8 +32,8 @@ impl Level {
     const fn as_str(self) -> &'static str {
         match self {
             Self::Debug => "DEBUG",
-            Self::Info  => "INFO ",
-            Self::Warn  => "WARN ",
+            Self::Info => "INFO ",
+            Self::Warn => "WARN ",
             Self::Error => "ERROR",
         }
     }
@@ -66,8 +66,8 @@ impl fmt::Display for Record<'_> {
         write!(
             f,
             "[{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z] [{level}] [{scope}] {message}",
-            level   = self.level,
-            scope   = self.scope,
+            level = self.level,
+            scope = self.scope,
             message = self.message,
         )
     }
@@ -97,8 +97,18 @@ fn secs_to_datetime(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
 
     let leap = is_leap(year);
     let month_days: [u64; 12] = [
-        31, if leap { 29 } else { 28 }, 31, 30, 31, 30,
-        31, 31, 30, 31, 30, 31,
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month = 1u64;
     for &md in &month_days {
@@ -188,7 +198,10 @@ impl MemoryLogger {
     /// Returns all captured log lines.
     #[must_use]
     pub fn lines(&self) -> Vec<String> {
-        self.records.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.records
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Returns `true` if any line contains `needle`.
@@ -202,7 +215,10 @@ impl Logger for MemoryLogger {
     fn log(&self, record: &Record<'_>) {
         if record.level >= self.min_level {
             let line = record.to_string();
-            self.records.lock().unwrap_or_else(|e| e.into_inner()).push(line);
+            self.records
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(line);
         }
     }
 
@@ -253,11 +269,11 @@ mod tests {
     #[test]
     fn level_ordering_and_display() {
         assert!(Level::Debug < Level::Info);
-        assert!(Level::Info  < Level::Warn);
-        assert!(Level::Warn  < Level::Error);
+        assert!(Level::Info < Level::Warn);
+        assert!(Level::Warn < Level::Error);
         assert_eq!(Level::Debug.to_string(), "DEBUG");
-        assert_eq!(Level::Info.to_string(),  "INFO ");
-        assert_eq!(Level::Warn.to_string(),  "WARN ");
+        assert_eq!(Level::Info.to_string(), "INFO ");
+        assert_eq!(Level::Warn.to_string(), "WARN ");
         assert_eq!(Level::Error.to_string(), "ERROR");
     }
 

@@ -605,15 +605,21 @@ mod tests {
     #[test]
     fn asset_read_and_save() {
         let asset = Asset::new("https://cdn.discordapp.com/icons/123/abc.png", "abc", false);
-        let bytes = asset.read(|url| {
-            assert_eq!(url, "https://cdn.discordapp.com/icons/123/abc.png");
-            Ok::<_, &'static str>(b"test image data".to_vec())
-        }).unwrap();
+        let bytes = asset
+            .read(|url| {
+                assert_eq!(url, "https://cdn.discordapp.com/icons/123/abc.png");
+                Ok::<_, &'static str>(b"test image data".to_vec())
+            })
+            .unwrap();
         assert_eq!(bytes, b"test image data");
 
         let temp_dir = std::env::temp_dir();
         let target_path = temp_dir.join("test_discord_asset.png");
-        asset.save(&target_path, |_| Ok::<_, &'static str>(b"saved data".to_vec())).unwrap();
+        asset
+            .save(&target_path, |_| {
+                Ok::<_, &'static str>(b"saved data".to_vec())
+            })
+            .unwrap();
         let read_back = std::fs::read(&target_path).unwrap();
         assert_eq!(read_back, b"saved data");
         let _ = std::fs::remove_file(target_path);

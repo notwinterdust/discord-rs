@@ -330,11 +330,7 @@ impl ClientCache {
 
     /// Returns the roles that a member currently holds, resolved from the cache.
     #[must_use]
-    pub fn member_roles(
-        &self,
-        guild_id: u64,
-        user_id: u64,
-    ) -> Option<Vec<&models::Role>> {
+    pub fn member_roles(&self, guild_id: u64, user_id: u64) -> Option<Vec<&models::Role>> {
         let member = self.member(guild_id, user_id)?;
         Some(
             member

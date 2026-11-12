@@ -353,17 +353,29 @@ impl HttpError {
     pub fn to_client_exception(&self) -> ClientException {
         match self {
             Self::Status { status: 404, error } => ClientException::NotFound(NotFound {
-                message: error.as_ref().map(|e| e.message.clone()).unwrap_or_else(|| "Resource not found".into()),
+                message: error
+                    .as_ref()
+                    .map(|e| e.message.clone())
+                    .unwrap_or_else(|| "Resource not found".into()),
                 code: error.as_ref().map(|e| e.code),
             }),
             Self::Status { status: 403, error } => ClientException::Forbidden(Forbidden {
-                message: error.as_ref().map(|e| e.message.clone()).unwrap_or_else(|| "Missing Permissions".into()),
+                message: error
+                    .as_ref()
+                    .map(|e| e.message.clone())
+                    .unwrap_or_else(|| "Missing Permissions".into()),
                 code: error.as_ref().map(|e| e.code),
             }),
             Self::Status { status: 401, error } => ClientException::Unauthorized(Unauthorized {
-                message: error.as_ref().map(|e| e.message.clone()).unwrap_or_else(|| "401: Unauthorized".into()),
+                message: error
+                    .as_ref()
+                    .map(|e| e.message.clone())
+                    .unwrap_or_else(|| "401: Unauthorized".into()),
             }),
-            Self::RateLimited { retry_after, global } => ClientException::RateLimited(RateLimitedError {
+            Self::RateLimited {
+                retry_after,
+                global,
+            } => ClientException::RateLimited(RateLimitedError {
                 retry_after: *retry_after,
                 global: *global,
             }),
@@ -419,8 +431,8 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        ClientException, DiscordError, Forbidden, GatewayNotFound, HttpError, InvalidData, NotFound,
-        RateLimitedError, Unauthorized,
+        ClientException, DiscordError, Forbidden, GatewayNotFound, HttpError, InvalidData,
+        NotFound, RateLimitedError, Unauthorized,
     };
 
     #[test]
@@ -479,10 +491,16 @@ mod tests {
     #[test]
     fn granular_error_hierarchy_and_conversions() {
         let not_found = NotFound::new("Unknown Channel").with_code(10003);
-        assert_eq!(not_found.to_string(), "Not Found: Unknown Channel (Discord error code 10003)");
+        assert_eq!(
+            not_found.to_string(),
+            "Not Found: Unknown Channel (Discord error code 10003)"
+        );
 
         let forbidden = Forbidden::new("Missing Permissions").with_code(50013);
-        assert_eq!(forbidden.to_string(), "Forbidden: Missing Permissions (Discord error code 50013)");
+        assert_eq!(
+            forbidden.to_string(),
+            "Forbidden: Missing Permissions (Discord error code 50013)"
+        );
 
         let unauthorized = Unauthorized::new("Invalid token");
         assert_eq!(unauthorized.to_string(), "Unauthorized: Invalid token");
@@ -494,7 +512,10 @@ mod tests {
         assert_eq!(invalid.to_string(), "Invalid Data: Malformed JSON");
 
         let gw = GatewayNotFound::new("wss://gateway.discord.gg");
-        assert_eq!(gw.to_string(), "Gateway Not Found: wss://gateway.discord.gg");
+        assert_eq!(
+            gw.to_string(),
+            "Gateway Not Found: wss://gateway.discord.gg"
+        );
 
         // Conversion from HttpError to ClientException
         let http_404 = HttpError::status(404, Some(DiscordError::new(10003, "Channel not found")));

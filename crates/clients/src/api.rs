@@ -114,19 +114,14 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Modifies a channel or thread.
-    pub fn modify_channel(
-        &self,
-        channel_id: u64,
-        body: &Value,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn modify_channel(&self, channel_id: u64, body: &Value) -> Result<HttpResponse, HttpError> {
         self.client
             .execute_json(self.client.patch(format!("channels/{channel_id}")), body)
     }
 
     /// Deletes a channel or closes a thread.
     pub fn delete_channel(&self, channel_id: u64) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute_delete(format!("channels/{channel_id}"))
+        self.client.execute_delete(format!("channels/{channel_id}"))
     }
 
     /// Creates a guild channel.
@@ -172,18 +167,15 @@ impl<T: Transport> DiscordApi<T> {
         body: &Value,
     ) -> Result<HttpResponse, HttpError> {
         self.client.execute_json(
-            self.client
-                .post(format!("channels/{channel_id}/messages/{message_id}/threads")),
+            self.client.post(format!(
+                "channels/{channel_id}/messages/{message_id}/threads"
+            )),
             body,
         )
     }
 
     /// Starts a standalone thread (forum / announcement / no message).
-    pub fn start_thread(
-        &self,
-        channel_id: u64,
-        body: &Value,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn start_thread(&self, channel_id: u64, body: &Value) -> Result<HttpResponse, HttpError> {
         self.client.execute_json(
             self.client.post(format!("channels/{channel_id}/threads")),
             body,
@@ -229,10 +221,7 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Lists public archived threads in a channel.
-    pub fn list_public_archived_threads(
-        &self,
-        channel_id: u64,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn list_public_archived_threads(&self, channel_id: u64) -> Result<HttpResponse, HttpError> {
         self.client
             .execute_get(format!("channels/{channel_id}/threads/archived/public"))
     }
@@ -313,11 +302,7 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Pins a message.
-    pub fn pin_message(
-        &self,
-        channel_id: u64,
-        message_id: u64,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn pin_message(&self, channel_id: u64, message_id: u64) -> Result<HttpResponse, HttpError> {
         self.client
             .execute_put(format!("channels/{channel_id}/pins/{message_id}"))
     }
@@ -431,14 +416,9 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Searches guild members by username/nickname.
-    pub fn search_members(
-        &self,
-        guild_id: u64,
-        query: &str,
-    ) -> Result<HttpResponse, HttpError> {
-        self.client.execute_get(format!(
-            "guilds/{guild_id}/members/search?query={query}"
-        ))
+    pub fn search_members(&self, guild_id: u64, query: &str) -> Result<HttpResponse, HttpError> {
+        self.client
+            .execute_get(format!("guilds/{guild_id}/members/search?query={query}"))
     }
 
     /// Modifies a guild member.
@@ -484,8 +464,7 @@ impl<T: Transport> DiscordApi<T> {
         body: &Value,
     ) -> Result<HttpResponse, HttpError> {
         self.client.execute_json(
-            self.client
-                .put(format!("guilds/{guild_id}/bans/{user_id}")),
+            self.client.put(format!("guilds/{guild_id}/bans/{user_id}")),
             body,
         )
     }
@@ -561,8 +540,7 @@ impl<T: Transport> DiscordApi<T> {
 
     /// Lists custom emojis for a guild.
     pub fn guild_emojis(&self, guild_id: u64) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute_get(format!("guilds/{guild_id}/emojis"))
+        self.client.execute_get(format!("guilds/{guild_id}/emojis"))
     }
 
     /// Fetches a specific guild emoji.
@@ -577,10 +555,8 @@ impl<T: Transport> DiscordApi<T> {
         guild_id: u64,
         body: &Value,
     ) -> Result<HttpResponse, HttpError> {
-        self.client.execute_json(
-            self.client.post(format!("guilds/{guild_id}/emojis")),
-            body,
-        )
+        self.client
+            .execute_json(self.client.post(format!("guilds/{guild_id}/emojis")), body)
     }
 
     /// Modifies a guild emoji.
@@ -614,11 +590,7 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Fetches a specific guild sticker.
-    pub fn guild_sticker(
-        &self,
-        guild_id: u64,
-        sticker_id: u64,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn guild_sticker(&self, guild_id: u64, sticker_id: u64) -> Result<HttpResponse, HttpError> {
         self.client
             .execute_get(format!("guilds/{guild_id}/stickers/{sticker_id}"))
     }
@@ -671,11 +643,7 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Fetches a scheduled event.
-    pub fn scheduled_event(
-        &self,
-        guild_id: u64,
-        event_id: u64,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn scheduled_event(&self, guild_id: u64, event_id: u64) -> Result<HttpResponse, HttpError> {
         self.client
             .execute_get(format!("guilds/{guild_id}/scheduled-events/{event_id}"))
     }
@@ -833,11 +801,7 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Creates a webhook.
-    pub fn create_webhook(
-        &self,
-        channel_id: u64,
-        body: &Value,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn create_webhook(&self, channel_id: u64, body: &Value) -> Result<HttpResponse, HttpError> {
         self.client.execute_json(
             self.client.post(format!("channels/{channel_id}/webhooks")),
             body,
@@ -845,21 +809,14 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Modifies a webhook.
-    pub fn modify_webhook(
-        &self,
-        webhook_id: u64,
-        body: &Value,
-    ) -> Result<HttpResponse, HttpError> {
-        self.client.execute_json(
-            self.client.patch(format!("webhooks/{webhook_id}")),
-            body,
-        )
+    pub fn modify_webhook(&self, webhook_id: u64, body: &Value) -> Result<HttpResponse, HttpError> {
+        self.client
+            .execute_json(self.client.patch(format!("webhooks/{webhook_id}")), body)
     }
 
     /// Deletes a webhook.
     pub fn delete_webhook(&self, webhook_id: u64) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute_delete(format!("webhooks/{webhook_id}"))
+        self.client.execute_delete(format!("webhooks/{webhook_id}"))
     }
 
     /// Executes (sends) a webhook message.
@@ -917,8 +874,9 @@ impl<T: Transport> DiscordApi<T> {
         application_id: u64,
         command_id: u64,
     ) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute_get(format!("applications/{application_id}/commands/{command_id}"))
+        self.client.execute_get(format!(
+            "applications/{application_id}/commands/{command_id}"
+        ))
     }
 
     /// Edits a global application command.
@@ -1010,7 +968,8 @@ impl<T: Transport> DiscordApi<T> {
         body: &Value,
     ) -> Result<HttpResponse, HttpError> {
         self.client.execute_json(
-            self.client.post(format!("webhooks/{application_id}/{token}")),
+            self.client
+                .post(format!("webhooks/{application_id}/{token}")),
             body,
         )
     }
@@ -1103,11 +1062,7 @@ impl<T: Transport> DiscordApi<T> {
     }
 
     /// Creates an invite for a channel.
-    pub fn create_invite(
-        &self,
-        channel_id: u64,
-        body: &Value,
-    ) -> Result<HttpResponse, HttpError> {
+    pub fn create_invite(&self, channel_id: u64, body: &Value) -> Result<HttpResponse, HttpError> {
         self.client.execute_json(
             self.client.post(format!("channels/{channel_id}/invites")),
             body,
@@ -1130,9 +1085,8 @@ impl<T: Transport> DiscordApi<T> {
         guild_id: u64,
         integration_id: u64,
     ) -> Result<HttpResponse, HttpError> {
-        self.client.execute_delete(format!(
-            "guilds/{guild_id}/integrations/{integration_id}"
-        ))
+        self.client
+            .execute_delete(format!("guilds/{guild_id}/integrations/{integration_id}"))
     }
 
     // =========================================================================
@@ -1179,9 +1133,9 @@ impl<T: Transport> DiscordApi<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::{HttpMethod, HttpRequest};
     use std::cell::RefCell;
     use std::rc::Rc;
-    use crate::http::{HttpRequest, HttpMethod};
 
     #[derive(Clone, Default)]
     struct MockTransport {

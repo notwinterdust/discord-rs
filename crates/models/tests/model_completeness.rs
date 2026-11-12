@@ -16,7 +16,10 @@ fn presence_and_activity_casting() {
 
     let act_stream = Activity::streaming("Live Coding", "https://twitch.tv/notwinterdust");
     assert_eq!(act_stream.kind, ActivityType::Streaming);
-    assert_eq!(act_stream.url.as_deref(), Some("https://twitch.tv/notwinterdust"));
+    assert_eq!(
+        act_stream.url.as_deref(),
+        Some("https://twitch.tv/notwinterdust")
+    );
 
     let act_listen = Activity::listening("Lofi Chill");
     assert_eq!(act_listen.kind, ActivityType::Listening);
@@ -96,7 +99,12 @@ fn automod_rule_casting() {
     assert_eq!(rule.actions.len(), 1);
     assert_eq!(rule.actions[0].action_type, 1);
     assert_eq!(
-        rule.actions[0].metadata.as_ref().unwrap().custom_message.as_deref(),
+        rule.actions[0]
+            .metadata
+            .as_ref()
+            .unwrap()
+            .custom_message
+            .as_deref(),
         Some("No invite links allowed!")
     );
     assert!(rule.enabled);
@@ -138,7 +146,10 @@ fn welcome_screen_and_onboarding_casting() {
     }"#;
     let welcome_val = Value::from_str(welcome_json).unwrap();
     let welcome = WelcomeScreen::from_value(&welcome_val, "welcome").unwrap();
-    assert_eq!(welcome.description.as_deref(), Some("Welcome to our coding community!"));
+    assert_eq!(
+        welcome.description.as_deref(),
+        Some("Welcome to our coding community!")
+    );
     assert_eq!(welcome.welcome_channels.len(), 1);
     assert_eq!(welcome.welcome_channels[0].channel_id, Snowflake::new(101));
     assert_eq!(welcome.welcome_channels[0].description, "Read the rules");

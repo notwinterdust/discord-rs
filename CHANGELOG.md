@@ -11,25 +11,25 @@ Initial release of `discord-rs`: a pure Rust, standard-library-only (`std`-only,
 
 ### Added
 
-#### Concurrent Runtime (Phase 0)
+#### Concurrent Runtime
 - `ThreadedCoordinator` background worker orchestration with clean atomic shutdown.
 - `ThreadedEventDispatcher` non-blocking asynchronous event fan-out with filter matching.
 - `ThreadedRequestExecutor` non-blocking REST HTTP request worker queue.
 - `ConcurrentShardRuntime` multi-shard worker pool with graceful join and shutdown.
 
-#### Gateway & Events (Phase 1)
+#### Gateway & Events
 - WebSocket gateway protocol connection handling (`GatewayConnection`).
 - Opcode parsing for `Hello`, `Identify`, `Resume`, `Heartbeat`, `HeartbeatAck`, and `Reconnect`.
 - Automatic heartbeat interval scheduling, missed-ACK tracking, and exponential backoff reconnection.
 - `EventDispatcher` supporting typed handlers, name-based filtering, and wildcard listeners.
 
-#### Cache Layer (Phase 2)
+#### Cache Layer
 - Thread-safe `ClientCache` with configurable capacity and LRU eviction policy.
 - Per-type caching for guilds, channels, users, roles, messages, and emojis.
 - `MemberCache` for compound guild-member tracking and cross-reference lookups.
 - Event-driven automatic cache population and invalidation.
 
-#### REST API (Phase 3)
+#### REST API
 - `DiscordApi` endpoint builder facade supporting core Discord REST resources:
   - Channels (get, modify, delete, messages, reactions, pins, typing, permissions).
   - Guilds (get, modify, delete, audit logs, voice regions, integrations, prune, vanity).
@@ -37,35 +37,35 @@ Initial release of `discord-rs`: a pure Rust, standard-library-only (`std`-only,
   - Users, user DMs, and bot profile endpoints.
 - Bucket-based rate limit tracking with `RateLimit` header extraction and retry delays.
 
-#### Application Commands (Phase 4)
+#### Application Commands
 - Slash command definitions, subcommand groups, and nested subcommands.
 - Strongly-typed `CommandOption` builders (string, integer, boolean, user, channel, role, mentionable, number, attachment).
 - User and Message context menu commands.
 - Autocomplete interaction payload support.
 
-#### UI Components (Phase 5)
+#### UI Components
 - Interactive message components: `ActionRow`, `Button` (with styles), `SelectMenu`, and `TextInput`.
 - Component builder ergonomics and structure validation.
 
-#### Webhooks & Interactions (Phase 6)
+#### Webhooks & Interactions
 - Standalone `WebhookClient` supporting ID/token authentication and execution.
 - Webhook message editing, deletion, and multipart body formatting.
 - Interaction response builders (channel message with source, deferred channel message, deferred update, modal response).
 
-#### Voice Support (Phase 7)
+#### Voice Support
 - Voice gateway connection abstraction and state machine.
 - RTP packet serialization, sequence tracking, and SSRC framing.
 - Audio source pipeline with `VolumeSource` linear gain scaling.
 - Encryption traits for voice packet ciphering.
 
-#### Sharding & Bot Ergonomics (Phase 8)
+#### Sharding & Bot Ergonomics
 - `ShardManager` with automatic shard count recommendation from Discord Gateway Bot endpoint.
 - `BotBuilder` fluent configuration API for token, intents, cache limits, and event hooks.
 - `EventWaiter` for synchronously waiting on future matching gateway events with timeouts.
 - Cog extension framework for modular command group registration.
 - Periodic task loop primitive for background polling and maintenance routines.
 
-#### Domain Models & CDN (Phase 9)
+#### Domain Models & CDN
 - Rich domain models: `User`, `Guild`, `Channel`, `Message`, `Role`, `Emoji`, `Member`, `Attachment`, `Embed`.
 - Presence and rich activity tracking (`PresenceUpdate`, `Activity`, `ActivityType`, `StatusType`).
 - Auto Moderation rules and execution actions (`AutoModRule`, `TriggerType`, `ActionType`).
@@ -76,7 +76,7 @@ Initial release of `discord-rs`: a pure Rust, standard-library-only (`std`-only,
 - Soundboard audio clips (`SoundboardSound`).
 - CDN asset URL generation and standard-library `read_to_vec` / `save_to_path` helpers.
 
-#### Architecture, Errors & Structured Logging (Phase 10)
+#### Architecture, Errors & Structured Logging
 - Granular error hierarchy: `NotFound`, `Forbidden`, `Unauthorized`, `RateLimitedError`, `InvalidData`, `GatewayNotFound`, `ClientException`.
 - Zero-dependency structured logging framework: `Level`, `Record`, `Logger`, `StderrLogger`, `MemoryLogger`, `NullLogger`, with `emit!`, `debug!`, `info!`, `warn!`, `error!` macros.
 - Full gateway and REST integration test suite verifying end-to-end event loops and concurrent execution.

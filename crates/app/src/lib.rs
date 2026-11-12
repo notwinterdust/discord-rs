@@ -142,19 +142,31 @@ impl CommandOption {
     /// Creates a string option.
     #[must_use]
     pub fn string(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::String)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::String,
+        )
     }
 
     /// Creates an integer option.
     #[must_use]
     pub fn integer(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Integer)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Integer,
+        )
     }
 
     /// Creates a boolean option.
     #[must_use]
     pub fn boolean(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Boolean)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Boolean,
+        )
     }
 
     /// Creates a user option.
@@ -166,7 +178,11 @@ impl CommandOption {
     /// Creates a channel option.
     #[must_use]
     pub fn channel(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Channel)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Channel,
+        )
     }
 
     /// Creates a role option.
@@ -178,31 +194,51 @@ impl CommandOption {
     /// Creates a mentionable option.
     #[must_use]
     pub fn mentionable(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Mentionable)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Mentionable,
+        )
     }
 
     /// Creates a number (floating point) option.
     #[must_use]
     pub fn number(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Number)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Number,
+        )
     }
 
     /// Creates an attachment option.
     #[must_use]
     pub fn attachment(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Attachment)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Attachment,
+        )
     }
 
     /// Creates a subcommand option.
     #[must_use]
     pub fn subcommand(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::Subcommand)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::Subcommand,
+        )
     }
 
     /// Creates a subcommand group option.
     #[must_use]
     pub fn subcommand_group(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self::new(name, description, enums::ApplicationCommandOptionType::SubcommandGroup)
+        Self::new(
+            name,
+            description,
+            enums::ApplicationCommandOptionType::SubcommandGroup,
+        )
     }
 
     /// Sets whether the option is required.
@@ -243,7 +279,11 @@ impl CommandOption {
 
     /// Adds a name localization.
     #[must_use]
-    pub fn with_name_localization(mut self, locale: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn with_name_localization(
+        mut self,
+        locale: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
         self.name_localizations.insert(locale.into(), name.into());
         self
     }
@@ -255,7 +295,8 @@ impl CommandOption {
         locale: impl Into<String>,
         description: impl Into<String>,
     ) -> Self {
-        self.description_localizations.insert(locale.into(), description.into());
+        self.description_localizations
+            .insert(locale.into(), description.into());
         self
     }
 
@@ -278,7 +319,12 @@ impl CommandOption {
         if !self.choices.is_empty() {
             object.insert(
                 "choices",
-                Value::Array(self.choices.iter().map(CommandOptionChoice::to_value).collect()),
+                Value::Array(
+                    self.choices
+                        .iter()
+                        .map(CommandOptionChoice::to_value)
+                        .collect(),
+                ),
             );
         }
         if !self.options.is_empty() {
@@ -298,10 +344,16 @@ impl CommandOption {
             }
         }
         if let Some(min) = self.min_length {
-            object.insert("min_length", Value::Number(data::Number::from_u64(min as u64)));
+            object.insert(
+                "min_length",
+                Value::Number(data::Number::from_u64(min as u64)),
+            );
         }
         if let Some(max) = self.max_length {
-            object.insert("max_length", Value::Number(data::Number::from_u64(max as u64)));
+            object.insert(
+                "max_length",
+                Value::Number(data::Number::from_u64(max as u64)),
+            );
         }
         if !self.name_localizations.is_empty() {
             let mut locs = Object::new();
@@ -448,7 +500,11 @@ impl CommandDefinition {
 
     /// Adds a name localization.
     #[must_use]
-    pub fn with_name_localization(mut self, locale: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn with_name_localization(
+        mut self,
+        locale: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
         self.name_localizations.insert(locale.into(), name.into());
         self
     }
@@ -460,7 +516,8 @@ impl CommandDefinition {
         locale: impl Into<String>,
         description: impl Into<String>,
     ) -> Self {
-        self.description_localizations.insert(locale.into(), description.into());
+        self.description_localizations
+            .insert(locale.into(), description.into());
         self
     }
 

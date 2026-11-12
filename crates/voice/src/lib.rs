@@ -45,9 +45,7 @@ impl UdpVoiceTransport {
     }
 
     pub fn receive(&self, buffer: &mut [u8]) -> Result<(usize, SocketAddr), String> {
-        self.socket
-            .recv_from(buffer)
-            .map_err(|err| err.to_string())
+        self.socket.recv_from(buffer).map_err(|err| err.to_string())
     }
 }
 

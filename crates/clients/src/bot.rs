@@ -166,11 +166,7 @@ impl EventWaiter {
     /// Returns [`RecvTimeoutError::Timeout`] when the deadline is reached before
     /// a matching event arrives, or [`RecvTimeoutError::Disconnected`] when the
     /// waiter is dropped.
-    pub fn wait_for<F>(
-        &self,
-        predicate: F,
-        timeout: Duration,
-    ) -> Result<Event, RecvTimeoutError>
+    pub fn wait_for<F>(&self, predicate: F, timeout: Duration) -> Result<Event, RecvTimeoutError>
     where
         F: Fn(&Event) -> bool,
     {
@@ -223,10 +219,7 @@ mod tests {
         let waiter2 = Arc::clone(&waiter);
 
         let handle = thread::spawn(move || {
-            waiter2.wait_for(
-                |e| matches!(e, Event::Resumed),
-                Duration::from_secs(2),
-            )
+            waiter2.wait_for(|e| matches!(e, Event::Resumed), Duration::from_secs(2))
         });
 
         // Wait until the listener is registered.
@@ -249,10 +242,7 @@ mod tests {
     #[test]
     fn event_waiter_times_out() {
         let waiter = EventWaiter::new();
-        let result = waiter.wait_for(
-            |_| false,
-            Duration::from_millis(10),
-        );
+        let result = waiter.wait_for(|_| false, Duration::from_millis(10));
         assert_eq!(result, Err(RecvTimeoutError::Timeout));
     }
 
@@ -270,4 +260,3 @@ mod tests {
         assert!(bot.hooks.on_error.is_some());
     }
 }
-

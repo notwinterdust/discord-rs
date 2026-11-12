@@ -55,11 +55,11 @@ mod webhook;
 
 pub use abc::{Asset, Color, Colour, HasId, Snowflake};
 pub use application::PartialApplication;
-pub use automod::{AutoModAction, AutoModActionMetadata, AutoModRule, AutoModTriggerMetadata};
 pub use audit_log::{
     AuditLog, AuditLogChange, AuditLogChangeKey, AuditLogChangeValue, AuditLogEntry,
     AuditLogEntryInfo, AuditLogEntryTarget,
 };
+pub use automod::{AutoModAction, AutoModActionMetadata, AutoModRule, AutoModTriggerMetadata};
 pub use cast::CastError;
 pub use channel::{
     GuildChannel, PermissionOverwrite, PermissionOverwriteEntry, PermissionOverwriteType,
@@ -86,9 +86,9 @@ pub use enums::{
 pub use event::names;
 pub use event::{
     CommandPermission, CommandPermissionsUpdate, Dispatch, Event, GuildMemberRemove,
-    GuildMembersChunk, MessageDelete, MessageDeleteBulk, MessagePollVote, PresenceUpdate,
-    RawEvent, ReactionEvent, ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete,
-    RoleEvent, ThreadDelete, TypingStart, UnavailableGuild, WebhooksUpdate,
+    GuildMembersChunk, MessageDelete, MessageDeleteBulk, MessagePollVote, PresenceUpdate, RawEvent,
+    ReactionEvent, ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete, RoleEvent,
+    ThreadDelete, TypingStart, UnavailableGuild, WebhooksUpdate,
 };
 pub use forum::ForumTag;
 pub use guild::Guild;

@@ -23,8 +23,10 @@ pub struct AutoModTriggerMetadata {
 impl AutoModTriggerMetadata {
     pub fn from_value(value: &Value, path: &str) -> Result<Self, CastError> {
         let obj = cast::object(value, path)?;
-        let keyword_filter = cast::optional_string_array(obj, path, "keyword_filter")?.unwrap_or_default();
-        let regex_patterns = cast::optional_string_array(obj, path, "regex_patterns")?.unwrap_or_default();
+        let keyword_filter =
+            cast::optional_string_array(obj, path, "keyword_filter")?.unwrap_or_default();
+        let regex_patterns =
+            cast::optional_string_array(obj, path, "regex_patterns")?.unwrap_or_default();
         let allow_list = cast::optional_string_array(obj, path, "allow_list")?.unwrap_or_default();
         let mention_total_limit = cast::optional_u32(obj, path, "mention_total_limit")?;
 
@@ -66,7 +68,8 @@ impl AutoModActionMetadata {
         Ok(Self {
             channel_id: cast::optional_snowflake(obj, path, "channel_id")?,
             duration_seconds: cast::optional_u32(obj, path, "duration_seconds")?,
-            custom_message: cast::optional_string(obj, path, "custom_message")?.map(ToOwned::to_owned),
+            custom_message: cast::optional_string(obj, path, "custom_message")?
+                .map(ToOwned::to_owned),
         })
     }
 }
@@ -85,11 +88,17 @@ impl AutoModAction {
         let obj = cast::object(value, path)?;
         let action_type = cast::required_u16(obj, path, "type")? as u8;
         let metadata = if let Some(m_val) = obj.get("metadata") {
-            Some(AutoModActionMetadata::from_value(m_val, &cast::field_path(path, "metadata"))?)
+            Some(AutoModActionMetadata::from_value(
+                m_val,
+                &cast::field_path(path, "metadata"),
+            )?)
         } else {
             None
         };
-        Ok(Self { action_type, metadata })
+        Ok(Self {
+            action_type,
+            metadata,
+        })
     }
 }
 
@@ -145,8 +154,10 @@ impl AutoModRule {
         }
 
         let enabled = cast::required_bool(obj, path, "enabled")?;
-        let exempt_roles = cast::optional_snowflake_array(obj, path, "exempt_roles")?.unwrap_or_default();
-        let exempt_channels = cast::optional_snowflake_array(obj, path, "exempt_channels")?.unwrap_or_default();
+        let exempt_roles =
+            cast::optional_snowflake_array(obj, path, "exempt_roles")?.unwrap_or_default();
+        let exempt_channels =
+            cast::optional_snowflake_array(obj, path, "exempt_channels")?.unwrap_or_default();
 
         Ok(Self {
             id,

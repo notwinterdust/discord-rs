@@ -20,8 +20,8 @@ fn cache_evicts_when_full() {
 #[test]
 fn threaded_gateway_lifecycle_round_trip() {
     use std::collections::VecDeque;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::thread;
     use std::time::Duration;
 
@@ -29,8 +29,8 @@ fn threaded_gateway_lifecycle_round_trip() {
         GatewayConfig, GatewayConnection, GatewayFrame, GatewayTransport, GatewayTransportError,
         ThreadedCoordinator, ThreadedEventDispatcher,
     };
-    use data::gateway::{GatewayOpcode, GatewayPayload, Hello};
     use data::Value;
+    use data::gateway::{GatewayOpcode, GatewayPayload, Hello};
     use enums::Intents;
 
     struct ScriptedTransport {
@@ -43,7 +43,10 @@ fn threaded_gateway_lifecycle_round_trip() {
             Ok(())
         }
 
-        fn recv(&mut self, _timeout: Option<Duration>) -> Result<GatewayFrame, GatewayTransportError> {
+        fn recv(
+            &mut self,
+            _timeout: Option<Duration>,
+        ) -> Result<GatewayFrame, GatewayTransportError> {
             if let Some(frame) = self.frames.pop_front() {
                 Ok(frame)
             } else {
@@ -65,7 +68,10 @@ fn threaded_gateway_lifecycle_round_trip() {
     let mut frames = VecDeque::new();
     let hello = GatewayPayload::new(
         GatewayOpcode::Hello,
-        Hello { heartbeat_interval: 10 }.to_value(),
+        Hello {
+            heartbeat_interval: 10,
+        }
+        .to_value(),
     )
     .to_json();
     frames.push_back(GatewayFrame::Text(hello));
@@ -75,13 +81,10 @@ fn threaded_gateway_lifecycle_round_trip() {
     typing_data.insert("user_id", Value::String("456".to_string()));
     typing_data.insert("timestamp", Value::from(1700000000_u64));
 
-    let dispatch = GatewayPayload::new(
-        GatewayOpcode::Dispatch,
-        Value::Object(typing_data),
-    )
-    .with_sequence(1)
-    .with_event("TYPING_START")
-    .to_json();
+    let dispatch = GatewayPayload::new(GatewayOpcode::Dispatch, Value::Object(typing_data))
+        .with_sequence(1)
+        .with_event("TYPING_START")
+        .to_json();
     frames.push_back(GatewayFrame::Text(dispatch));
 
     let ack = GatewayPayload::new(GatewayOpcode::HeartbeatAck, Value::Null).to_json();
@@ -100,7 +103,10 @@ fn threaded_gateway_lifecycle_round_trip() {
             self.0.lock().unwrap().connect(url)
         }
 
-        fn recv(&mut self, timeout: Option<Duration>) -> Result<GatewayFrame, GatewayTransportError> {
+        fn recv(
+            &mut self,
+            timeout: Option<Duration>,
+        ) -> Result<GatewayFrame, GatewayTransportError> {
             self.0.lock().unwrap().recv(timeout)
         }
 
@@ -171,7 +177,10 @@ fn concurrent_shard_orchestration_and_startup_buckets() {
 
     let mut ready_shards = Vec::new();
     for _ in 0..2 {
-        if let Ok((shard, msg)) = runtime.event_rx.recv_timeout(std::time::Duration::from_secs(1)) {
+        if let Ok((shard, msg)) = runtime
+            .event_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+        {
             ready_shards.push((shard.id, msg));
         }
     }

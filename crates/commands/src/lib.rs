@@ -2,8 +2,8 @@
 
 #![forbid(unsafe_code)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -93,9 +93,11 @@ impl CommandGroup {
             name: format!("{} {}", context.name, sub_name),
             arguments: context.arguments[1..].to_vec(),
         };
-        let Some(cmd) = self.subcommands.iter_mut().find(|c| {
-            c.name == *sub_name || c.aliases.iter().any(|a| a == sub_name)
-        }) else {
+        let Some(cmd) = self
+            .subcommands
+            .iter_mut()
+            .find(|c| c.name == *sub_name || c.aliases.iter().any(|a| a == sub_name))
+        else {
             return false;
         };
         cmd.handler.call(&sub_context);

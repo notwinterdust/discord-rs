@@ -195,7 +195,9 @@ mod tests {
             "webhooks/12345/secret_token/messages/6789"
         );
 
-        let msg = WebhookMessage::new().with_content("hello\nworld").silent(true);
+        let msg = WebhookMessage::new()
+            .with_content("hello\nworld")
+            .silent(true);
         let encoded = wh.message(msg);
         assert!(encoded.contains("\"content\":\"hello\\nworld\""));
         assert!(encoded.contains("\"silent\":true"));

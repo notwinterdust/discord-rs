@@ -68,7 +68,8 @@ impl OnboardingPromptOption {
         let obj = cast::object(value, path)?;
         Ok(Self {
             id: cast::required_snowflake(obj, path, "id")?,
-            channel_ids: cast::optional_snowflake_array(obj, path, "channel_ids")?.unwrap_or_default(),
+            channel_ids: cast::optional_snowflake_array(obj, path, "channel_ids")?
+                .unwrap_or_default(),
             role_ids: cast::optional_snowflake_array(obj, path, "role_ids")?.unwrap_or_default(),
             emoji_id: cast::optional_snowflake(obj, path, "emoji_id")?,
             emoji_name: cast::optional_string(obj, path, "emoji_name")?.map(ToOwned::to_owned),
@@ -134,7 +135,8 @@ impl Onboarding {
     pub fn from_value(value: &Value, path: &str) -> Result<Self, CastError> {
         let obj = cast::object(value, path)?;
         let guild_id = cast::required_snowflake(obj, path, "guild_id")?;
-        let default_channel_ids = cast::optional_snowflake_array(obj, path, "default_channel_ids")?.unwrap_or_default();
+        let default_channel_ids =
+            cast::optional_snowflake_array(obj, path, "default_channel_ids")?.unwrap_or_default();
         let enabled = cast::required_bool(obj, path, "enabled")?;
         let mode = cast::optional_u8(obj, path, "mode")?.unwrap_or(0);
 

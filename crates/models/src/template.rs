@@ -40,7 +40,10 @@ impl GuildTemplate {
         let creator = User::from_value(creator_val)?;
 
         let source_guild_id = cast::required_snowflake(obj, path, "source_guild_id")?;
-        let serialized_source_guild = obj.get("serialized_source_guild").cloned().unwrap_or(Value::Null);
+        let serialized_source_guild = obj
+            .get("serialized_source_guild")
+            .cloned()
+            .unwrap_or(Value::Null);
 
         Ok(Self {
             code,

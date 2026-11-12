@@ -112,4 +112,3 @@ impl fmt::Display for ActivityType {
         }
     }
 }
-

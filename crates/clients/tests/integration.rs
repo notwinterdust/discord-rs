@@ -15,12 +15,11 @@ use std::time::Duration;
 
 use clients::{
     EventWaiter, GatewayConfig, GatewayConnection, GatewayFrame, GatewayTransport,
-    GatewayTransportError, HttpMethod, HttpRequest, ThreadedCoordinator,
-    ThreadedEventDispatcher,
+    GatewayTransportError, HttpMethod, HttpRequest, ThreadedCoordinator, ThreadedEventDispatcher,
 };
 use data::{
-    gateway::{GatewayOpcode, GatewayPayload, Hello},
     Object, Value,
+    gateway::{GatewayOpcode, GatewayPayload, Hello},
 };
 use enums::Intents;
 use models::Event;
@@ -103,7 +102,10 @@ fn gateway_full_lifecycle_round_trip() {
     // 1. Hello
     let hello = GatewayPayload::new(
         GatewayOpcode::Hello,
-        Hello { heartbeat_interval: 10 }.to_value(),
+        Hello {
+            heartbeat_interval: 10,
+        }
+        .to_value(),
     )
     .to_json();
     frames.push_back(GatewayFrame::Text(hello));
@@ -143,11 +145,10 @@ fn gateway_full_lifecycle_round_trip() {
     typing_data.insert("timestamp", Value::from(1_700_000_000_u64));
     typing_data.insert("guild_id", Value::String("333".into()));
 
-    let typing_frame =
-        GatewayPayload::new(GatewayOpcode::Dispatch, Value::Object(typing_data))
-            .with_sequence(2)
-            .with_event("TYPING_START")
-            .to_json();
+    let typing_frame = GatewayPayload::new(GatewayOpcode::Dispatch, Value::Object(typing_data))
+        .with_sequence(2)
+        .with_event("TYPING_START")
+        .to_json();
     frames.push_back(GatewayFrame::Text(typing_frame));
 
     // 4. Heartbeat ACK

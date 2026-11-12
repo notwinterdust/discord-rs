@@ -8,8 +8,8 @@
 
 use std::error::Error;
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -279,7 +279,10 @@ impl<T: GatewayTransport> GatewayConnection<T> {
     }
 
     /// Attaches an asynchronous threaded event dispatcher to forward all events.
-    pub fn attach_threaded_dispatcher(&mut self, dispatcher: &crate::events::ThreadedEventDispatcher) {
+    pub fn attach_threaded_dispatcher(
+        &mut self,
+        dispatcher: &crate::events::ThreadedEventDispatcher,
+    ) {
         dispatcher.attach_to(self.runtime.events_mut());
     }
 
@@ -861,8 +864,8 @@ mod tests {
 
     #[test]
     fn threaded_coordinator_manages_lifecycle_and_shutdown() {
-        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         use std::thread;
 
         let ran = Arc::new(AtomicUsize::new(0));
