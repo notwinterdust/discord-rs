@@ -17,7 +17,7 @@ pub mod gateway;
 pub mod http;
 
 pub use api::DiscordApi;
-pub use client::{Client, ClientState, HttpClient, TcpTransport, Transport};
+pub use client::{Client, ClientState, HttpClient, RetryPolicy, TcpTransport, Transport};
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
     GatewayTransportError,

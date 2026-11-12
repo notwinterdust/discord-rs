@@ -23,6 +23,30 @@ pub trait Transport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError>;
 }
 
+/// Retry policy for transient REST failures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RetryPolicy {
+    /// Maximum number of retries after the initial request.
+    pub retries: u32,
+    /// Initial delay between attempts.
+    pub backoff: Duration,
+}
+
+impl RetryPolicy {
+    /// Creates a retry policy.
+    #[must_use]
+    pub const fn new(retries: u32, backoff: Duration) -> Self {
+        Self { retries, backoff }
+    }
+
+    /// Returns the delay for a zero-based retry attempt.
+    #[must_use]
+    pub fn delay(&self, attempt: u32) -> Duration {
+        self.backoff
+            .saturating_mul(1_u32.checked_shl(attempt).unwrap_or(u32::MAX))
+    }
+}
+
 /// A synchronous HTTP/1.1 transport backed only by the Rust standard library.
 ///
 /// This transport handles plain HTTP. Applications that need HTTPS can provide
@@ -168,6 +192,35 @@ pub struct HttpClient<T> {
     token: String,
     auth_scheme: String,
     transport: T,
+}
+
+impl<T: Transport> HttpClient<T> {
+    /// Executes a request with bounded retries for transport and rate-limit errors.
+    pub fn execute_with_retry(
+        &self,
+        request: HttpRequest,
+        policy: RetryPolicy,
+    ) -> Result<HttpResponse, HttpError> {
+        let mut attempt = 0;
+        loop {
+            match self.execute(request.clone()) {
+                Ok(response) if !response.is_rate_limited() => return Ok(response),
+                Ok(response) if attempt >= policy.retries => return Ok(response),
+                Ok(response) => {
+                    if let Some(delay) = response.retry_after() {
+                        std::thread::sleep(delay);
+                    } else {
+                        std::thread::sleep(policy.delay(attempt));
+                    }
+                }
+                Err(error) if attempt < policy.retries && error.is_rate_limited() => {
+                    std::thread::sleep(policy.delay(attempt));
+                }
+                Err(error) => return Err(error),
+            }
+            attempt += 1;
+        }
+    }
 }
 
 /// Lifecycle state for a Discord client.
