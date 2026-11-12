@@ -690,6 +690,86 @@ impl PresenceUpdate {
     }
 }
 
+/// The payload of a `GUILD_EMOJIS_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GuildEmojisUpdate {
+    /// The guild whose emojis were updated.
+    pub guild_id: Snowflake,
+    /// The updated list of emojis.
+    pub emojis: Vec<PartialEmoji>,
+}
+
+impl GuildEmojisUpdate {
+    /// Decodes a `GUILD_EMOJIS_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "guild_emojis_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let guild_id = cast::required_snowflake(object, path, "guild_id")?;
+        let emojis = cast::optional_array_of(object, path, "emojis", PartialEmoji::from_value_at)?
+            .unwrap_or_default();
+        Ok(Self { guild_id, emojis })
+    }
+}
+
+/// The payload of a `GUILD_STICKERS_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GuildStickersUpdate {
+    /// The guild whose stickers were updated.
+    pub guild_id: Snowflake,
+    /// The updated list of stickers.
+    pub stickers: Vec<crate::Sticker>,
+}
+
+impl GuildStickersUpdate {
+    /// Decodes a `GUILD_STICKERS_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "guild_stickers_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let guild_id = cast::required_snowflake(object, path, "guild_id")?;
+        let stickers = cast::optional_array_of(object, path, "stickers", |v, p| {
+            crate::Sticker::from_value_at(v, p)
+        })?
+        .unwrap_or_default();
+        Ok(Self { guild_id, stickers })
+    }
+}
+
+/// The payload of soundboard sound events.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SoundboardSoundEvent {
+    /// The sound's ID.
+    pub sound_id: Snowflake,
+    /// The guild the sound belongs to.
+    pub guild_id: Snowflake,
+    /// The name of the sound.
+    pub name: Option<String>,
+}
+
+impl SoundboardSoundEvent {
+    /// Decodes a soundboard sound payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "soundboard_sound")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let sound_id = cast::required_snowflake(object, path, "sound_id")?;
+        let guild_id = cast::required_snowflake(object, path, "guild_id")?;
+        let name = cast::optional_string(object, path, "name")?.map(str::to_owned);
+        Ok(Self {
+            sound_id,
+            guild_id,
+            name,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -750,6 +830,14 @@ pub enum Event {
     GuildBanAdd(GuildBanEvent),
     /// A user was unbanned from a guild.
     GuildBanRemove(GuildBanEvent),
+    /// Guild emojis were updated.
+    GuildEmojisUpdate(GuildEmojisUpdate),
+    /// Guild stickers were updated.
+    GuildStickersUpdate(GuildStickersUpdate),
+    /// A soundboard sound was created or updated.
+    GuildSoundboardSoundCreate(SoundboardSoundEvent),
+    /// A soundboard sound was deleted.
+    GuildSoundboardSoundDelete(SoundboardSoundEvent),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -855,6 +943,20 @@ impl Event {
             )),
             "GUILD_BAN_ADD" => Ok(Self::GuildBanAdd(GuildBanEvent::from_value(data)?)),
             "GUILD_BAN_REMOVE" => Ok(Self::GuildBanRemove(GuildBanEvent::from_value(data)?)),
+            "GUILD_EMOJIS_UPDATE" => {
+                Ok(Self::GuildEmojisUpdate(GuildEmojisUpdate::from_value(data)?))
+            }
+            "GUILD_STICKERS_UPDATE" => Ok(Self::GuildStickersUpdate(
+                GuildStickersUpdate::from_value(data)?,
+            )),
+            "GUILD_SOUNDBOARD_SOUND_CREATE" | "GUILD_SOUNDBOARD_SOUND_UPDATE" => {
+                Ok(Self::GuildSoundboardSoundCreate(
+                    SoundboardSoundEvent::from_value(data)?,
+                ))
+            }
+            "GUILD_SOUNDBOARD_SOUND_DELETE" => Ok(Self::GuildSoundboardSoundDelete(
+                SoundboardSoundEvent::from_value(data)?,
+            )),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -918,6 +1020,10 @@ impl Event {
             Self::MessageReactionRemoveEmoji(_) => "MESSAGE_REACTION_REMOVE_EMOJI",
             Self::GuildBanAdd(_) => "GUILD_BAN_ADD",
             Self::GuildBanRemove(_) => "GUILD_BAN_REMOVE",
+            Self::GuildEmojisUpdate(_) => "GUILD_EMOJIS_UPDATE",
+            Self::GuildStickersUpdate(_) => "GUILD_STICKERS_UPDATE",
+            Self::GuildSoundboardSoundCreate(_) => "GUILD_SOUNDBOARD_SOUND_CREATE",
+            Self::GuildSoundboardSoundDelete(_) => "GUILD_SOUNDBOARD_SOUND_DELETE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
@@ -1572,6 +1678,74 @@ mod tests {
                 assert_eq!(presence.activities[0].kind, enums::ActivityType::Playing);
             }
             other => panic!("expected PresenceUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decodes_guild_asset_events() {
+        let emojis_raw = r#"{
+            "guild_id": "100",
+            "emojis": [
+                {
+                    "id": "10",
+                    "name": "custom_emoji"
+                }
+            ]
+        }"#;
+
+        match event("GUILD_EMOJIS_UPDATE", emojis_raw) {
+            Event::GuildEmojisUpdate(update) => {
+                assert_eq!(update.guild_id, Snowflake::new(100));
+                assert_eq!(update.emojis.len(), 1);
+                assert_eq!(update.emojis[0].id, Some(Snowflake::new(10)));
+                assert_eq!(update.emojis[0].name.as_deref(), Some("custom_emoji"));
+            }
+            other => panic!("expected GuildEmojisUpdate, got {other:?}"),
+        }
+
+        let stickers_raw = r#"{
+            "guild_id": "100",
+            "stickers": [
+                {
+                    "id": "20",
+                    "name": "custom_sticker",
+                    "format_type": 1,
+                    "type": 2
+                }
+            ]
+        }"#;
+
+        match event("GUILD_STICKERS_UPDATE", stickers_raw) {
+            Event::GuildStickersUpdate(update) => {
+                assert_eq!(update.guild_id, Snowflake::new(100));
+                assert_eq!(update.stickers.len(), 1);
+                assert_eq!(update.stickers[0].id, Snowflake::new(20));
+                assert_eq!(update.stickers[0].name, "custom_sticker");
+            }
+            other => panic!("expected GuildStickersUpdate, got {other:?}"),
+        }
+
+        let sound_raw = r#"{
+            "sound_id": "50",
+            "guild_id": "100",
+            "name": "airhorn"
+        }"#;
+
+        match event("GUILD_SOUNDBOARD_SOUND_CREATE", sound_raw) {
+            Event::GuildSoundboardSoundCreate(sound) => {
+                assert_eq!(sound.sound_id, Snowflake::new(50));
+                assert_eq!(sound.guild_id, Snowflake::new(100));
+                assert_eq!(sound.name.as_deref(), Some("airhorn"));
+            }
+            other => panic!("expected GuildSoundboardSoundCreate, got {other:?}"),
+        }
+
+        match event("GUILD_SOUNDBOARD_SOUND_DELETE", sound_raw) {
+            Event::GuildSoundboardSoundDelete(sound) => {
+                assert_eq!(sound.sound_id, Snowflake::new(50));
+                assert_eq!(sound.guild_id, Snowflake::new(100));
+            }
+            other => panic!("expected GuildSoundboardSoundDelete, got {other:?}"),
         }
     }
 
