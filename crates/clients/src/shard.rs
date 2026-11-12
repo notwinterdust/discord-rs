@@ -40,6 +40,14 @@ pub struct ShardManager {
 }
 
 impl ShardManager {
+    /// Creates a manager automatically sizing from Discord gateway recommendations.
+    pub fn from_gateway_recommendation(
+        recommended_count: u32,
+        max_concurrency: u32,
+    ) -> Result<Self, &'static str> {
+        Self::new(recommended_count.max(1), max_concurrency.max(1))
+    }
+
     /// Creates a manager for `count` shards.
     pub fn new(count: u32, max_concurrency: u32) -> Result<Self, &'static str> {
         let mut shards = Vec::new();

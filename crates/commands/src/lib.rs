@@ -11,6 +11,45 @@ pub struct Context {
     pub arguments: Vec<String>,
 }
 
+/// A command group organizing subcommands.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommandGroup {
+    pub name: String,
+    pub commands: Vec<String>,
+}
+
+impl CommandGroup {
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            commands: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, command: impl Into<String>) {
+        self.commands.push(command.into());
+    }
+}
+
+/// A recurring background task loop schedule description.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TaskLoop {
+    interval: std::time::Duration,
+}
+
+impl TaskLoop {
+    #[must_use]
+    pub const fn new(interval: std::time::Duration) -> Self {
+        Self { interval }
+    }
+
+    #[must_use]
+    pub const fn interval(self) -> std::time::Duration {
+        self.interval
+    }
+}
+
 /// A command predicate.
 pub type Check = Box<dyn Fn(&Context) -> bool>;
 
