@@ -42,10 +42,18 @@ let currentDocId = null;
 if (typeof marked !== 'undefined') {
   marked.setOptions({
     highlight: function(code, lang) {
-      if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
-        try {
-          return hljs.highlight(code, { language: lang }).value;
-        } catch (e) {}
+      if (typeof hljs !== 'undefined') {
+        const targetLang = (lang && hljs.getLanguage(lang)) ? lang : (lang === 'toml' ? 'ini' : null);
+        if (targetLang && hljs.getLanguage(targetLang)) {
+          try {
+            return hljs.highlight(code, { language: targetLang }).value;
+          } catch (e) {}
+        }
+        if (lang !== 'text') {
+          try {
+            return hljs.highlightAuto(code).value;
+          } catch (e) {}
+        }
       }
       return code;
     },
@@ -125,6 +133,11 @@ async function loadDocument(docId) {
 
     const html = marked.parse(markdown);
     contentEl.innerHTML = html;
+
+    // Ensure all code blocks have the hljs class for consistent themes
+    contentEl.querySelectorAll('pre code').forEach(code => {
+      code.classList.add('hljs');
+    });
 
     // Attach copy buttons to pre blocks
     attachCodeCopyButtons(contentEl);
@@ -269,6 +282,20 @@ function setupQuickInstallCopy() {
         btn.innerHTML = ICON_CHECK_SVG;
         setTimeout(() => { btn.innerHTML = ICON_COPY_SVG; }, 2000);
       });
+    });
+  }
+
+  const agentBtn = document.getElementById('copy-agent-btn');
+  if (agentBtn) {
+    agentBtn.addEventListener('click', () => {
+      navigator.clipboard
+        .writeText('git clone -b wiki https://github.com/notwinterdust/discord-rust.git')
+        .then(() => {
+          agentBtn.innerHTML = `${ICON_CHECK_SVG} <span style="color: #57F287;">Copied!</span>`;
+          setTimeout(() => {
+            agentBtn.innerHTML = `${ICON_COPY_SVG} <span>Copy</span>`;
+          }, 2000);
+        });
     });
   }
 }

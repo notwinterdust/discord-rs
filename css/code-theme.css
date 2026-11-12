@@ -20,99 +20,118 @@ code.hljs {
   background: transparent !important;
 }
 
+/* ========================================================================= */
+/* Syntax Highlighting Tokens (High-Contrast & Distinct)                     */
+/* ========================================================================= */
+
 /* Keywords (fn, let, mut, pub, use, struct, impl, match, if, return, async, trait) */
 .hljs-keyword,
 .hljs-selector-tag {
-  color: #c084fc;
+  color: #c084fc !important; /* Vibrant Purple/Violet */
   font-weight: 600;
 }
 
-/* Types, Structs, Classes, Enums, Traits (Snowflake, String, Option, Result, Context, u64) */
+/* Types, Structs, Classes, Enums, Traits (Snowflake, Context, ThreadPool, Paginator, u64) */
 .hljs-type,
 .hljs-class .hljs-title,
 .hljs-title.class_,
+.class_ {
+  color: #38bdf8 !important; /* Electric Cyan */
+  font-weight: 600;
+}
+
+/* Built-ins, Standard Enums & Primitives (Some, None, Ok, Err, Option, Result, Vec, String) */
 .hljs-built_in {
-  color: #38bdf8;
+  color: #2dd4bf !important; /* Luminous Mint / Teal */
   font-weight: 500;
 }
 
-/* Functions, Methods, Calls */
+/* Functions, Methods, Calls & Invocations (new, execute, dispatch, unwrap, println) */
+.hljs-title,
 .hljs-title.function_,
+.function_,
+.invoke__,
+.hljs-function,
 .hljs-function .hljs-title {
-  color: #60a5fa;
+  color: #60a5fa !important; /* Vivid Sky Blue */
   font-weight: 500;
+}
+
+/* Variables, Function Parameters & Language Identifiers (ctx, a, b, event, self) */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-variable.language_,
+.hljs-params {
+  color: #fdba74 !important; /* Warm Soft Apricot / Peach */
 }
 
 /* Strings, Character Literals */
 .hljs-string,
 .hljs-regexp {
-  color: #4ade80;
+  color: #4ade80 !important; /* Bright Emerald Green */
 }
 
-/* Numbers, Booleans, Literals */
+/* Numbers, Booleans, Literals (123, 0.5, true, false) */
 .hljs-number,
 .hljs-literal {
-  color: #fb923c;
+  color: #fb923c !important; /* Warm Amber / Orange */
+  font-weight: 500;
 }
 
-/* Macros, Attributes, Annotations, Meta (#[command], #[derive], assert_eq!, vec!) */
+/* Macros, Attributes, Annotations & Meta (#[command], #[derive], assert_eq!, vec!) */
 .hljs-meta,
 .hljs-meta .hljs-keyword,
 .hljs-attr,
 .hljs-attribute {
-  color: #f472b6;
+  color: #f472b6 !important; /* Electric Rose / Pink */
 }
 
 .hljs-meta .hljs-string {
-  color: #86efac;
+  color: #a7f3d0 !important;
 }
 
-/* Comments & Documentation */
+/* Comments & Documentation (Clearly visible, high-contrast italic) */
 .hljs-comment,
 .hljs-quote {
-  color: #64748b;
+  color: #94a3b8 !important; /* Legible Light Slate */
   font-style: italic;
 }
 
 .hljs-doctag {
-  color: #a78bfa;
+  color: #c084fc !important;
   font-style: italic;
   font-weight: 600;
 }
 
-/* Variables, Parameters, Properties */
-.hljs-variable,
-.hljs-template-variable,
-.hljs-params {
-  color: #f1f5f9;
-}
-
-/* Symbols, Bullets, Sub-sections */
+/* Symbols, Lifetimes, Bullets ('a, 'static) */
 .hljs-symbol,
 .hljs-bullet,
 .hljs-selector-id,
 .hljs-section {
-  color: #38bdf8;
+  color: #fb7185 !important; /* Rose Red */
   font-weight: 600;
 }
 
 /* Operators, Punctuation */
-.hljs-punctuation,
 .hljs-operator {
-  color: #94a3b8;
+  color: #e2e8f0 !important;
+}
+
+.hljs-punctuation {
+  color: #94a3b8 !important;
 }
 
 /* Diff Additions & Deletions */
 .hljs-addition {
-  color: #4ade80;
-  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80 !important;
+  background: rgba(74, 222, 128, 0.15);
   padding: 0.1rem 0.3rem;
   border-radius: 3px;
 }
 
 .hljs-deletion {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
+  color: #f87171 !important;
+  background: rgba(248, 113, 113, 0.15);
   padding: 0.1rem 0.3rem;
   border-radius: 3px;
 }
@@ -128,5 +147,5 @@ code.hljs {
 
 .hljs-link {
   text-decoration: underline;
-  color: #818cf8;
+  color: #818cf8 !important;
 }
