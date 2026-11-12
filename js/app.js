@@ -38,27 +38,72 @@ const DOCS_CATALOG = [
 const cache = new Map();
 let currentDocId = null;
 
-// Initialize marked with highlight.js
-if (typeof marked !== 'undefined') {
-  marked.setOptions({
-    highlight: function(code, lang) {
-      if (typeof hljs !== 'undefined') {
-        const targetLang = (lang && hljs.getLanguage(lang)) ? lang : (lang === 'toml' ? 'ini' : null);
-        if (targetLang && hljs.getLanguage(targetLang)) {
-          try {
-            return hljs.highlight(code, { language: targetLang }).value;
-          } catch (e) {}
-        }
-        if (lang !== 'text') {
-          try {
-            return hljs.highlightAuto(code).value;
-          } catch (e) {}
-        }
+// ---------------------------------------------------------------------------
+// Syntax Highlighting & Marked Parser Configuration (marked v15+)
+// ---------------------------------------------------------------------------
+
+// Register TOML grammar if not built-in
+if (typeof hljs !== 'undefined' && !hljs.getLanguage('toml')) {
+  hljs.registerLanguage('toml', (hljs) => ({
+    name: 'TOML',
+    aliases: ['toml'],
+    case_insensitive: false,
+    contains: [
+      hljs.COMMENT('#', '$'),
+      {
+        className: 'section',
+        begin: /^\s*\[+/,
+        end: /\]+/
+      },
+      {
+        className: 'string',
+        begin: /"/,
+        end: /"/
+      },
+      {
+        className: 'number',
+        begin: /\b\d+(\.\d+)?\b/
+      },
+      {
+        className: 'literal',
+        begin: /\b(true|false)\b/
+      },
+      {
+        className: 'attr',
+        begin: /^[a-zA-Z0-9_-]+(?=\s*=)/
       }
-      return code;
-    },
-    gfm: true,
-    breaks: false
+    ]
+  }));
+}
+
+// In marked v15+, custom code rendering is provided via marked.use({ renderer: { code(...) } })
+if (typeof marked !== 'undefined') {
+  marked.use({
+    renderer: {
+      code(token) {
+        const text = (typeof token === 'object' && token.text !== undefined) ? token.text : String(token || '');
+        const rawLang = (typeof token === 'object' && token.lang !== undefined) ? token.lang : '';
+        const lang = (rawLang.match(/^\S*/) || [''])[0];
+
+        let highlighted = null;
+        if (typeof hljs !== 'undefined') {
+          const targetLang = (lang && hljs.getLanguage(lang)) ? lang : (lang === 'toml' ? 'toml' : null);
+          if (targetLang && hljs.getLanguage(targetLang)) {
+            try {
+              highlighted = hljs.highlight(text, { language: targetLang }).value;
+            } catch (e) {}
+          } else if (lang !== 'text') {
+            try {
+              highlighted = hljs.highlightAuto(text).value;
+            } catch (e) {}
+          }
+        }
+
+        const className = lang ? `language-${lang} hljs hljs-done` : 'hljs hljs-done';
+        const codeHtml = highlighted !== null ? highlighted : text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<pre><code class="${className}">${codeHtml}</code></pre>\n`;
+      }
+    }
   });
 }
 
@@ -134,10 +179,17 @@ async function loadDocument(docId) {
     const html = marked.parse(markdown);
     contentEl.innerHTML = html;
 
-    // Ensure all code blocks have the hljs class for consistent themes
-    contentEl.querySelectorAll('pre code').forEach(code => {
-      code.classList.add('hljs');
-    });
+    // Highlight any unhighlighted code blocks in DOM
+    if (typeof hljs !== 'undefined') {
+      contentEl.querySelectorAll('pre code').forEach(code => {
+        if (!code.classList.contains('hljs-done')) {
+          try {
+            hljs.highlightElement(code);
+            code.classList.add('hljs-done');
+          } catch (e) {}
+        }
+      });
+    }
 
     // Attach copy buttons to pre blocks
     attachCodeCopyButtons(contentEl);
