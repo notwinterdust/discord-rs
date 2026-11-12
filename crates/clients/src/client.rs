@@ -4,6 +4,10 @@
 //! hands them to a [`Transport`]. The transport performs the actual I/O, which
 //! keeps the request-building logic testable without opening sockets.
 
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
+use std::time::Duration;
+
 use except::HttpError;
 use version::USER_AGENT;
 
@@ -17,6 +21,142 @@ pub trait Transport {
     ///
     /// Returns an [`HttpError`] when the request cannot be completed.
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError>;
+}
+
+/// A synchronous HTTP/1.1 transport backed only by the Rust standard library.
+///
+/// This transport handles plain HTTP. Applications that need HTTPS can provide
+/// a TLS-enabled implementation of [`Transport`] without changing [`HttpClient`].
+#[derive(Clone, Debug)]
+pub struct TcpTransport {
+    host: String,
+    port: u16,
+    timeout: Duration,
+}
+
+impl TcpTransport {
+    /// Creates a transport for an HTTP host.
+    #[must_use]
+    pub fn new(host: impl Into<String>, port: u16) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            timeout: Duration::from_secs(30),
+        }
+    }
+
+    /// Sets the connect and read/write timeout.
+    #[must_use]
+    pub const fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Returns the configured host.
+    #[must_use]
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    /// Returns the configured port.
+    #[must_use]
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
+    fn connect(&self) -> Result<TcpStream, HttpError> {
+        let address = (self.host.as_str(), self.port)
+            .to_socket_addrs()
+            .map_err(|error| HttpError::transport(error.to_string()))?
+            .next()
+            .ok_or_else(|| HttpError::transport("host did not resolve"))?;
+        let stream = TcpStream::connect_timeout(&address, self.timeout)
+            .map_err(|error| HttpError::transport(error.to_string()))?;
+        stream
+            .set_read_timeout(Some(self.timeout))
+            .and_then(|_| stream.set_write_timeout(Some(self.timeout)))
+            .map_err(|error| HttpError::transport(error.to_string()))?;
+        Ok(stream)
+    }
+}
+
+impl Transport for TcpTransport {
+    fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError> {
+        let mut stream = self.connect()?;
+        let body = request.body.as_deref().unwrap_or_default();
+        let mut request_bytes = format!(
+            "{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n",
+            request.method,
+            request.path_and_query(),
+            self.host
+        )
+        .into_bytes();
+        for (name, value) in &request.headers {
+            request_bytes.extend_from_slice(format!("{name}: {value}\r\n").as_bytes());
+        }
+        if !body.is_empty() && request.header("content-length").is_none() {
+            request_bytes.extend_from_slice(
+                format!("Content-Length: {}\r\n", body.len()).as_bytes(),
+            );
+        }
+        request_bytes.extend_from_slice(b"\r\n");
+        request_bytes.extend_from_slice(body);
+        stream
+            .write_all(&request_bytes)
+            .map_err(|error| HttpError::transport(error.to_string()))?;
+
+        let mut reader = BufReader::new(stream);
+        let mut status_line = String::new();
+        reader
+            .read_line(&mut status_line)
+            .map_err(|error| HttpError::transport(error.to_string()))?;
+        let mut status_parts = status_line.split_whitespace();
+        let _version = status_parts
+            .next()
+            .ok_or_else(|| HttpError::decode("missing HTTP version"))?;
+        let status = status_parts
+            .next()
+            .ok_or_else(|| HttpError::decode("missing HTTP status"))?
+            .parse::<u16>()
+            .map_err(|error| HttpError::decode(error.to_string()))?;
+
+        let mut headers = Vec::new();
+        let mut line = String::new();
+        loop {
+            line.clear();
+            reader
+                .read_line(&mut line)
+                .map_err(|error| HttpError::transport(error.to_string()))?;
+            if line == "\r\n" || line == "\n" {
+                break;
+            }
+            let (name, value) = line
+                .split_once(':')
+                .ok_or_else(|| HttpError::decode("malformed HTTP header"))?;
+            headers.push((name.trim().to_owned(), value.trim().to_owned()));
+        }
+
+        let mut response_body = Vec::new();
+        if let Some(length) = headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, value)| value.parse::<usize>().ok())
+        {
+            let mut limited = reader.take(length as u64);
+            limited
+                .read_to_end(&mut response_body)
+                .map_err(|error| HttpError::transport(error.to_string()))?;
+            if response_body.len() != length {
+                return Err(HttpError::decode("HTTP body shorter than Content-Length"));
+            }
+        } else {
+            reader
+                .read_to_end(&mut response_body)
+                .map_err(|error| HttpError::transport(error.to_string()))?;
+        }
+
+        Ok(HttpResponse::new(status, headers, response_body))
+    }
 }
 
 /// A Discord REST client.
