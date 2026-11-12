@@ -857,6 +857,87 @@ impl AutoModActionExecution {
     }
 }
 
+/// The payload of `INTEGRATION_CREATE` or `INTEGRATION_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntegrationEvent {
+    /// The integration ID.
+    pub id: Snowflake,
+    /// The guild ID.
+    pub guild_id: Snowflake,
+    /// The integration name.
+    pub name: String,
+    /// The integration type (e.g. "twitch", "youtube", "discord").
+    pub kind: String,
+    /// Whether the integration is enabled.
+    pub enabled: bool,
+}
+
+impl IntegrationEvent {
+    /// Decodes an integration payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "integration")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            kind: cast::required_string(object, path, "type")?.to_owned(),
+            enabled: cast::optional_bool(object, path, "enabled", true)?,
+        })
+    }
+}
+
+/// The payload of an `INTEGRATION_DELETE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntegrationDelete {
+    /// The integration ID.
+    pub id: Snowflake,
+    /// The guild ID.
+    pub guild_id: Snowflake,
+    /// The application ID, if any.
+    pub application_id: Option<Snowflake>,
+}
+
+impl IntegrationDelete {
+    /// Decodes an `INTEGRATION_DELETE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "integration_delete")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            application_id: cast::optional_snowflake(object, path, "application_id")?,
+        })
+    }
+}
+
+/// The payload of a `GUILD_INTEGRATIONS_UPDATE` event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GuildIntegrationsUpdate {
+    /// The guild whose integrations were updated.
+    pub guild_id: Snowflake,
+}
+
+impl GuildIntegrationsUpdate {
+    /// Decodes a `GUILD_INTEGRATIONS_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "guild_integrations_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -933,6 +1014,14 @@ pub enum Event {
     AutoModerationRuleDelete(AutoModRule),
     /// An AutoMod action was executed.
     AutoModerationActionExecution(AutoModActionExecution),
+    /// Guild integrations were updated.
+    GuildIntegrationsUpdate(GuildIntegrationsUpdate),
+    /// An integration was created.
+    IntegrationCreate(IntegrationEvent),
+    /// An integration was updated.
+    IntegrationUpdate(IntegrationEvent),
+    /// An integration was deleted.
+    IntegrationDelete(IntegrationDelete),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -1064,6 +1153,12 @@ impl Event {
             "AUTO_MODERATION_ACTION_EXECUTION" => Ok(Self::AutoModerationActionExecution(
                 AutoModActionExecution::from_value(data)?,
             )),
+            "GUILD_INTEGRATIONS_UPDATE" => Ok(Self::GuildIntegrationsUpdate(
+                GuildIntegrationsUpdate::from_value(data)?,
+            )),
+            "INTEGRATION_CREATE" => Ok(Self::IntegrationCreate(IntegrationEvent::from_value(data)?)),
+            "INTEGRATION_UPDATE" => Ok(Self::IntegrationUpdate(IntegrationEvent::from_value(data)?)),
+            "INTEGRATION_DELETE" => Ok(Self::IntegrationDelete(IntegrationDelete::from_value(data)?)),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -1135,6 +1230,10 @@ impl Event {
             Self::AutoModerationRuleUpdate(_) => "AUTO_MODERATION_RULE_UPDATE",
             Self::AutoModerationRuleDelete(_) => "AUTO_MODERATION_RULE_DELETE",
             Self::AutoModerationActionExecution(_) => "AUTO_MODERATION_ACTION_EXECUTION",
+            Self::GuildIntegrationsUpdate(_) => "GUILD_INTEGRATIONS_UPDATE",
+            Self::IntegrationCreate(_) => "INTEGRATION_CREATE",
+            Self::IntegrationUpdate(_) => "INTEGRATION_UPDATE",
+            Self::IntegrationDelete(_) => "INTEGRATION_DELETE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
