@@ -23,6 +23,12 @@ pub trait Transport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError>;
 }
 
+/// Application-provided secure transport boundary.
+pub trait SecureTransport: Transport {
+    /// Returns the negotiated peer name.
+    fn peer_name(&self) -> &str;
+}
+
 /// Retry policy for transient REST failures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RetryPolicy {
