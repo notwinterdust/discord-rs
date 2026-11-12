@@ -48,6 +48,16 @@ impl<T> Cache<T> {
         self.values.clear();
     }
 
+    /// Removes all identifiers supplied by an invalidation event.
+    pub fn invalidate<I>(&mut self, ids: I)
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        for id in ids {
+            self.values.remove(&id);
+        }
+    }
+
     /// Returns the current number of entries.
     #[must_use]
     pub fn len(&self) -> usize {
