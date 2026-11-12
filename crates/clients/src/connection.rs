@@ -68,6 +68,21 @@ pub enum GatewayFrame {
     Timeout,
 }
 
+/// WebSocket-level frames required by a gateway transport.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WebSocketFrame {
+    /// UTF-8 application data.
+    Text(String),
+    /// Binary application data.
+    Binary(Vec<u8>),
+    /// A ping payload.
+    Ping(Vec<u8>),
+    /// A pong payload.
+    Pong(Vec<u8>),
+    /// A close frame.
+    Close(GatewayCloseCode),
+}
+
 /// Performs gateway I/O for [`GatewayConnection`].
 ///
 /// Implementations own the socket and handle WebSocket framing and TLS. The

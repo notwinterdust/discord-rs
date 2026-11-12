@@ -20,7 +20,7 @@ pub use api::DiscordApi;
 pub use client::{Client, ClientState, HttpClient, RetryPolicy, TcpTransport, Transport};
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
-    GatewayTransportError,
+    GatewayTransportError, WebSocketFrame,
 };
 pub use events::{EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, RuntimeError};
 pub use gateway::{
