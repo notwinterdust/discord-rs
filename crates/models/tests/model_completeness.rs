@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use discord_rust_models as models;
+
 use abc::Snowflake;
 use data::Value;
 use enums::{ActivityType, Status};

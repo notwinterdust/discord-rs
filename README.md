@@ -7,39 +7,6 @@
 
 A feature-rich, high-performance Discord API and Gateway library for Rust.
 
-Built with **pure `std`** (zero `async`/`tokio` runtime dependencies), strict `#![forbid(unsafe_code)]` across all crates, and an extensible transport-trait architecture.
-
----
-
-## Philosophy & Design Principles
-
-- **Standard Library Only**: Built completely on `std` threads, channels (`std::sync::mpsc`), atomics, and standard I/O. No complex async runtimes or bloated dependency trees.
-- **`#![forbid(unsafe_code)]`**: Every single crate in this repository enforces `#![forbid(unsafe_code)]`.
-- **Pluggable Transports**: Gateway and REST operations are decoupled behind traits (`GatewayTransport`, `Transport`). You can plug in any WebSocket implementation (e.g. native TLS, tungstenite, mock test fixtures) without changing application logic.
-- **Granular Modularity**: 14 focused crates allow applications to pull in only the components they require, or use the top-level `discord-rs` umbrella crate.
-
----
-
-## Workspace Structure
-
-| Crate | Description |
-|---|---|
-| [`discord-rs`](.) | Umbrella crate re-exporting all core modules and ergonomic entrypoints |
-| [`abc`](crates/abc) | Abstract base components: `Snowflake`, `Colour`, and CDN `Asset` helpers |
-| [`app`](crates/app) | Application commands, slash command options, interactions, and UI components |
-| [`clients`](crates/clients) | HTTP REST client, WebSocket gateway, cache, sharding, and bot runner |
-| [`commands`](crates/commands) | Command handling, argument parsing, context menus, and cog extensions |
-| [`data`](crates/data) | Data models, JSON encoding/decoding, and gateway payload primitives |
-| [`enums`](crates/enums) | Bitflags, permissions, intents, and gateway opcode constants |
-| [`event`](crates/event) | Gateway event types, event dispatcher, and filter types |
-| [`except`](crates/except) | Granular error hierarchy (`NotFound`, `Forbidden`, `RateLimitedError`, etc.) |
-| [`log`](crates/log) | Zero-dependency structured logging framework (`StderrLogger`, `MemoryLogger`) |
-| [`models`](crates/models) | Strongly-typed Discord domain models (Guilds, Channels, Messages, Users, etc.) |
-| [`util`](crates/util) | Percent-encoding and query parameter formatting |
-| [`version`](crates/version) | Discord API version constants and endpoint URL builders |
-| [`voice`](crates/voice) | Voice gateway connection, RTP packets, and volume source scaling |
-| [`webhook`](crates/webhook) | Standalone webhook execution and multipart body serialization |
-
 ---
 
 ## Features
@@ -57,21 +24,12 @@ Built with **pure `std`** (zero `async`/`tokio` runtime dependencies), strict `#
 
 ## Installation
 
-Add `discord-rs` to your `Cargo.toml`:
+Just add `discord-rs` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 discord-rs = "0.1.0"
 ```
-
-Or select only the specific crates you need:
-
-```toml
-[dependencies]
-discord-rs-clients = { package = "clients", version = "0.1.0" }
-discord-rs-models = { package = "models", version = "0.1.0" }
-```
-
 ---
 
 ## Quickstart: Bot Builder

@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use discord_rust_clients as clients;
+
 use clients::{
     EventWaiter, GatewayConfig, GatewayConnection, GatewayFrame, GatewayTransport,
     GatewayTransportError, HttpMethod, HttpRequest, ThreadedCoordinator, ThreadedEventDispatcher,

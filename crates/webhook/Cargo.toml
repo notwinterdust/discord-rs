@@ -1,10 +1,10 @@
 [package]
-name = "webhook"
+name = "discord-rust-webhook"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Webhook execution, token authentication, and multipart payload serialization for discord-rs."
+description = "Webhook execution, token authentication, and multipart payload serialization for discord-rust."
 
 [dependencies]

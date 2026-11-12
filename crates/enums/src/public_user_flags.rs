@@ -7,7 +7,7 @@
 /// Wraps the publicly available Discord user flags.
 ///
 /// ```
-///     use enums::PublicUserFlags;
+///     use discord_rust_enums::PublicUserFlags;
 ///
 ///     let flags = PublicUserFlags::STAFF | PublicUserFlags::VERIFIED_BOT;
 ///     assert!(flags.staff());

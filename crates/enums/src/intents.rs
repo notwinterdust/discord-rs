@@ -10,7 +10,7 @@
 /// associated constants plus accessor methods
 /// example :
 /// ```
-///     use enums::Intents;
+///     use discord_rust_enums::Intents;
 ///
 ///     let mut intents = Intents::default();
 ///     assert!(intents.guilds());

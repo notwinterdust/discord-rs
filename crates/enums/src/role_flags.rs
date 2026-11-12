@@ -3,7 +3,7 @@
 /// Wraps the Discord guild role flags.
 ///
 /// ```
-///     use enums::RoleFlags;
+///     use discord_rust_enums::RoleFlags;
 ///
 ///     let flags = RoleFlags::IN_PROMPT;
 ///     assert!(flags.in_prompt());

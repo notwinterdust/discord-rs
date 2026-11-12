@@ -1,13 +1,13 @@
 [package]
-name = "models"
+name = "discord-rust-models"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Strongly-typed Discord domain models and JSON decoding for discord-rs."
+description = "Strongly-typed Discord domain models and JSON decoding for discord-rust."
 
 [dependencies]
-abc = { path = "../abc", version = "0.1.0" }
-data = { path = "../data", version = "0.1.0" }
-enums = { path = "../enums", version = "0.1.0" }
+abc = { package = "discord-rust-abc", path = "../abc", version = "0.1.0" }
+data = { package = "discord-rust-data", path = "../data", version = "0.1.0" }
+enums = { package = "discord-rust-enums", path = "../enums", version = "0.1.0" }

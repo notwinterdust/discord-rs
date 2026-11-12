@@ -131,7 +131,7 @@ impl fmt::Display for InviteTarget {
 /// Wraps the Discord invite flags.
 ///
 /// ```
-///     use enums::InviteFlags;
+///     use discord_rust_enums::InviteFlags;
 ///
 ///     let flags = InviteFlags::GUEST;
 ///     assert!(flags.guest());

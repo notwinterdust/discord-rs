@@ -281,7 +281,7 @@ impl fmt::Display for ForumSortOrder {
 /// These flags appear on guild channels and threads.
 ///
 /// ```
-///     use enums::ChannelFlags;
+///     use discord_rust_enums::ChannelFlags;
 ///
 ///     let flags = ChannelFlags::PINNED;
 ///     assert!(flags.pinned());

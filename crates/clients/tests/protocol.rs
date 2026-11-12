@@ -1,4 +1,5 @@
 use clients::{Cache, ShardManager};
+use discord_rust_clients as clients;
 
 #[test]
 fn shard_manager_assigns_all_shards() {

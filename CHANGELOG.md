@@ -1,13 +1,13 @@
 # Changelog
 
-All notable changes to `discord-rs` are documented in this file.
+All notable changes to `discord-rust` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.0] - 2026-11-12
 
-Initial release of `discord-rs`: a pure Rust, standard-library-only (`std`-only, zero `async`/`tokio`), `#![forbid(unsafe_code)]` Discord API and Gateway library.
+Initial release of `discord-rust`: a pure Rust, standard-library-only (`std`-only, zero `async`/`tokio`), `#![forbid(unsafe_code)]` Discord API and Gateway library.
 
 ### Added
 

@@ -8,7 +8,7 @@ use core::cmp::Ordering;
 /// Wraps the Discord permission bitfield.
 ///
 /// ```
-///     use enums::Permissions;
+///     use discord_rust_enums::Permissions;
 ///
 ///     let mut permissions = Permissions::none();
 ///     permissions.set_send_messages(true);

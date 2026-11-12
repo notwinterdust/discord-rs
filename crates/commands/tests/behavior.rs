@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use commands::{CommandRegistry, Cooldown};
+use discord_rust_commands as commands;
 
 #[test]
 fn quoted_arguments_are_preserved() {

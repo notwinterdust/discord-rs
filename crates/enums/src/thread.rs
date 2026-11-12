@@ -3,7 +3,7 @@
 /// Flags attached to a thread member.
 ///
 /// ```
-///     use enums::ThreadMemberFlags;
+///     use discord_rust_enums::ThreadMemberFlags;
 ///
 ///     let flags = ThreadMemberFlags::IN;
 ///     assert!(flags.in_thread());

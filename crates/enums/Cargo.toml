@@ -1,10 +1,10 @@
 [package]
-name = "enums"
+name = "discord-rust-enums"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Discord API enumerations, bitflags, intents, permissions, and opcode constants for discord-rs."
+description = "Discord API enumerations, bitflags, intents, permissions, and opcode constants for discord-rust."
 
 [dependencies]

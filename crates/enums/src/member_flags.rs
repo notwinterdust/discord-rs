@@ -2,7 +2,7 @@
 /// Wraps the Discord guild member flags.
 ///
 /// ```
-///     use enums::MemberFlags;
+///     use discord_rust_enums::MemberFlags;
 ///
 ///     let flags = MemberFlags::DID_REJOIN | MemberFlags::GUEST;
 ///     assert!(flags.did_rejoin());

@@ -1,10 +1,10 @@
 [package]
-name = "log"
+name = "discord-rust-log"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Zero-dependency structured logging framework for discord-rs."
+description = "Zero-dependency structured logging framework for discord-rust."
 
 [dependencies]

@@ -1,10 +1,10 @@
 [package]
-name = "util"
+name = "discord-rust-util"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "URL encoding, percent-encoding, and string formatting utilities for discord-rs."
+description = "URL encoding, percent-encoding, and string formatting utilities for discord-rust."
 
 [dependencies]

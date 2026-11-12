@@ -70,7 +70,7 @@ impl fmt::Display for PermissionOverwriteType {
 ///
 /// ```
 ///     use enums::Permissions;
-///     use models::PermissionOverwrite;
+///     use discord_rust_models::PermissionOverwrite;
 ///
 ///     let mut overwrite = PermissionOverwrite::new();
 ///     overwrite.set(Permissions::VIEW_CHANNEL, Some(true));

@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          gh release create "$TAG" --generate-notes --title "discord-rs $TAG"
+          gh release create "$TAG" --generate-notes --title "discord-rust $TAG"
 
   publish-crates-io:
     name: Publish to crates.io
@@ -75,21 +75,21 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           CRATES=(
-            abc
-            enums
-            except
-            log
-            util
-            version
-            voice
-            commands
-            webhook
-            data
-            app
-            models
-            event
-            clients
-            discord-rs
+            discord-rust-abc
+            discord-rust-enums
+            discord-rust-except
+            discord-rust-log
+            discord-rust-util
+            discord-rust-version
+            discord-rust-voice
+            discord-rust-commands
+            discord-rust-webhook
+            discord-rust-data
+            discord-rust-app
+            discord-rust-models
+            discord-rust-event
+            discord-rust-clients
+            discord-rust
           )
 
           for crate in "${CRATES[@]}"; do

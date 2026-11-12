@@ -1,11 +1,11 @@
 [package]
-name = "event"
+name = "discord-rust-event"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Gateway event types, dispatcher, and event filters for discord-rs."
+description = "Gateway event types, dispatcher, and event filters for discord-rust."
 
 [dependencies]
-models = { path = "../models", version = "0.1.0" }
+models = { package = "discord-rust-models", path = "../models", version = "0.1.0" }
