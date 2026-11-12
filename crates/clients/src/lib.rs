@@ -15,7 +15,7 @@ pub mod events;
 pub mod gateway;
 pub mod http;
 
-pub use client::{HttpClient, TcpTransport, Transport};
+pub use client::{Client, ClientState, HttpClient, TcpTransport, Transport};
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
     GatewayTransportError,

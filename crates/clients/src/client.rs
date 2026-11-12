@@ -171,6 +171,83 @@ pub struct HttpClient<T> {
     transport: T,
 }
 
+/// Lifecycle state for a Discord client.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ClientState {
+    /// No gateway session is active.
+    #[default]
+    Disconnected,
+    /// The client is establishing a gateway session.
+    Connecting,
+    /// The client has received READY and can serve events.
+    Ready,
+    /// The client is shutting down.
+    Closing,
+    /// The client has shut down.
+    Closed,
+}
+
+/// A REST client with explicit lifecycle state.
+#[derive(Clone, Debug)]
+pub struct Client<T> {
+    http: HttpClient<T>,
+    state: ClientState,
+}
+
+impl<T> Client<T> {
+    /// Creates a disconnected client.
+    #[must_use]
+    pub fn new(token: impl Into<String>, transport: T) -> Self {
+        Self {
+            http: HttpClient::new(token, transport),
+            state: ClientState::Disconnected,
+        }
+    }
+
+    /// Returns the REST client.
+    #[must_use]
+    pub const fn http(&self) -> &HttpClient<T> {
+        &self.http
+    }
+
+    /// Returns the REST client mutably.
+    pub fn http_mut(&mut self) -> &mut HttpClient<T> {
+        &mut self.http
+    }
+
+    /// Returns the current lifecycle state.
+    #[must_use]
+    pub const fn state(&self) -> ClientState {
+        self.state
+    }
+
+    /// Marks the client as connecting.
+    pub fn begin_connect(&mut self) {
+        self.state = ClientState::Connecting;
+    }
+
+    /// Marks the client as ready.
+    pub fn mark_ready(&mut self) {
+        self.state = ClientState::Ready;
+    }
+
+    /// Marks the client as closing.
+    pub fn begin_close(&mut self) {
+        self.state = ClientState::Closing;
+    }
+
+    /// Marks the client as closed.
+    pub fn mark_closed(&mut self) {
+        self.state = ClientState::Closed;
+    }
+
+    /// Returns whether the client is ready.
+    #[must_use]
+    pub const fn is_ready(&self) -> bool {
+        matches!(self.state, ClientState::Ready)
+    }
+}
+
 impl<T> HttpClient<T> {
     /// Creates a client that authenticates with a bot token.
     #[must_use]

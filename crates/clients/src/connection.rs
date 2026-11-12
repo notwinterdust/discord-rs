@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn run_connects_handles_frames_and_stops_on_close() {
-        let transport = MockTransport::default();
+        let mut transport = MockTransport::default();
         transport.frames.push_back(GatewayFrame::Text(hello(1_000)));
         transport.frames.push_back(GatewayFrame::Text(ready()));
         transport.frames.push_back(GatewayFrame::Text(message()));
@@ -701,7 +701,7 @@ mod tests {
 
     #[test]
     fn reconnect_resumes_the_existing_session() {
-        let mut transport = MockTransport::default();
+        let transport = MockTransport::default();
         let mut connection = GatewayConnection::new(config(), transport);
         connection.connect().unwrap();
         connection.handle_text(&hello(1_000)).unwrap();
