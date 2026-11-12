@@ -206,6 +206,13 @@ pub(crate) fn snowflake(value: &Value, path: &str) -> Result<Snowflake, CastErro
         .ok_or_else(|| CastError::invalid_type(path, "a snowflake"))
 }
 
+/// Parses a snowflake from an object key.
+pub(crate) fn snowflake_key(key: &str, path: &str) -> Result<Snowflake, CastError> {
+    key.parse::<u64>()
+        .map(Snowflake::new)
+        .map_err(|_| CastError::invalid_value(path, "a snowflake key"))
+}
+
 /// Reads an ISO 8601 timestamp.
 pub(crate) fn timestamp(value: &Value, path: &str) -> Result<SystemTime, CastError> {
     let text = value

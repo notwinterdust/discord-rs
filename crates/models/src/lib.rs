@@ -11,6 +11,8 @@
 //! events together, resolving member role IDs against the decoded roles.
 //! Message payloads decode their attachments, embeds, components, polls,
 //! reactions, stickers, references and interaction metadata.
+//! Interaction payloads decode their command options, resolved objects, message
+//! components and modal submissions according to the interaction type.
 
 #![forbid(unsafe_code)]
 

@@ -621,7 +621,10 @@ impl Message {
     /// Returns [`CastError`] when a required field is missing or a field has
     /// an unexpected type.
     pub fn from_value(value: &Value) -> Result<Self, CastError> {
-        let path = "message";
+        Self::from_value_at(value, "message")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
         let object = cast::object(value, path)?;
         let id = cast::required_snowflake(object, path, "id")?;
         let channel_id = cast::required_snowflake(object, path, "channel_id")?;

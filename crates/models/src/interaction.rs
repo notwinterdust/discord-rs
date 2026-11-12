@@ -40,6 +40,45 @@ pub enum CommandOptionValue {
 }
 
 impl CommandOptionValue {
+    /// Decodes a value for an option of the given type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the JSON value does not match the option
+    /// type.
+    pub fn from_value(
+        value: &Value,
+        kind: ApplicationCommandOptionType,
+    ) -> Result<Self, CastError> {
+        Self::from_value_at(value, "value", kind)
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        kind: ApplicationCommandOptionType,
+    ) -> Result<Self, CastError> {
+        match kind {
+            ApplicationCommandOptionType::String => {
+                Ok(Self::String(cast::string(value, path)?.to_owned()))
+            }
+            ApplicationCommandOptionType::Integer => Ok(Self::Integer(cast::i64(value, path)?)),
+            ApplicationCommandOptionType::Boolean => Ok(Self::Boolean(cast::boolean(value, path)?)),
+            ApplicationCommandOptionType::User
+            | ApplicationCommandOptionType::Channel
+            | ApplicationCommandOptionType::Role
+            | ApplicationCommandOptionType::Mentionable
+            | ApplicationCommandOptionType::Attachment => {
+                Ok(Self::Snowflake(cast::snowflake(value, path)?))
+            }
+            ApplicationCommandOptionType::Number => Ok(Self::Number(cast::f64(value, path)?)),
+            ApplicationCommandOptionType::Subcommand
+            | ApplicationCommandOptionType::SubcommandGroup => {
+                Err(CastError::invalid_value(path, "a command option value"))
+            }
+        }
+    }
+
     /// Returns the value as a string, if it is one.
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
@@ -161,6 +200,52 @@ impl ApplicationCommandOption {
             options: Vec::new(),
             focused: false,
         }
+    }
+
+    /// Decodes an option from a Discord command option object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a value does
+    /// not match its option type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "option")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let kind = cast::required_enum(
+            object,
+            path,
+            "type",
+            "a command option type",
+            ApplicationCommandOptionType::from_value,
+        )?;
+
+        let value = match cast::optional(object, path, "value") {
+            Some((value, value_path)) => {
+                Some(CommandOptionValue::from_value_at(value, &value_path, kind)?)
+            }
+            None => None,
+        };
+
+        Ok(Self {
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            kind,
+            value,
+            options: cast::optional_array_of(
+                object,
+                path,
+                "options",
+                ApplicationCommandOption::from_value_at,
+            )?
+            .unwrap_or_default(),
+            focused: cast::optional_bool(object, path, "focused", false)?,
+        })
     }
 
     /// Sets the option's value.
@@ -346,6 +431,126 @@ impl ResolvedData {
             && self.messages.is_empty()
             && self.attachments.is_empty()
     }
+
+    /// Decodes resolved objects from a Discord resolved-data object.
+    ///
+    /// `guild_id` is used for guild-scoped assets and channels because resolved
+    /// payloads omit the guild ID on those objects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when an object key or field is malformed.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "resolved", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, guild_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let users_path = cast::field_path(path, "users");
+        let mut users = HashMap::new();
+        if let Some(entries) = cast::optional_object(object, path, "users")? {
+            users.reserve(entries.len());
+            for (key, value) in entries.iter() {
+                let user_path = cast::field_path(&users_path, key);
+                let id = cast::snowflake_key(key, &user_path)?;
+                let user = User::from_object_at(cast::object(value, &user_path)?, &user_path)?;
+                users.insert(id, user);
+            }
+        }
+
+        let members_path = cast::field_path(path, "members");
+        let mut members = HashMap::new();
+        if let Some(entries) = cast::optional_object(object, path, "members")? {
+            members.reserve(entries.len());
+            for (key, value) in entries.iter() {
+                let member_path = cast::field_path(&members_path, key);
+                let id = cast::snowflake_key(key, &member_path)?;
+                let member_object = cast::object(value, &member_path)?;
+                let member = if member_object.contains_key("user") {
+                    Member::from_value_at(value, &member_path, guild_id, &[])?
+                } else {
+                    let user = users.get(&id).cloned().unwrap_or_else(|| User::new(id, ""));
+                    Member::from_object_with_user_at(
+                        member_object,
+                        &member_path,
+                        guild_id,
+                        &[],
+                        user,
+                    )?
+                };
+                members.insert(id, member);
+            }
+        }
+
+        let roles_path = cast::field_path(path, "roles");
+        let mut roles = HashMap::new();
+        if let Some(entries) = cast::optional_object(object, path, "roles")? {
+            roles.reserve(entries.len());
+            for (key, value) in entries.iter() {
+                let role_path = cast::field_path(&roles_path, key);
+                let id = cast::snowflake_key(key, &role_path)?;
+                let role = Role::from_value_at(value, &role_path, guild_id)?;
+                roles.insert(id, role);
+            }
+        }
+
+        let channels_path = cast::field_path(path, "channels");
+        let mut channels = HashMap::new();
+        if let Some(entries) = cast::optional_object(object, path, "channels")? {
+            channels.reserve(entries.len());
+            for (key, value) in entries.iter() {
+                let channel_path = cast::field_path(&channels_path, key);
+                let id = cast::snowflake_key(key, &channel_path)?;
+                let channel = GuildChannel::from_value_at(value, &channel_path, guild_id)?;
+                channels.insert(id, channel);
+            }
+        }
+
+        let messages_path = cast::field_path(path, "messages");
+        let mut messages = HashMap::new();
+        if let Some(entries) = cast::optional_object(object, path, "messages")? {
+            messages.reserve(entries.len());
+            for (key, value) in entries.iter() {
+                let message_path = cast::field_path(&messages_path, key);
+                let id = cast::snowflake_key(key, &message_path)?;
+                let message = Message::from_value_at(value, &message_path)?;
+                messages.insert(id, message);
+            }
+        }
+
+        let attachments_path = cast::field_path(path, "attachments");
+        let mut attachments = HashMap::new();
+        if let Some(entries) = cast::optional_object(object, path, "attachments")? {
+            attachments.reserve(entries.len());
+            for (key, value) in entries.iter() {
+                let attachment_path = cast::field_path(&attachments_path, key);
+                let id = cast::snowflake_key(key, &attachment_path)?;
+                let attachment = Attachment::from_value_at(value, &attachment_path)?;
+                attachments.insert(id, attachment);
+            }
+        }
+
+        Ok(Self {
+            users,
+            members,
+            roles,
+            channels,
+            messages,
+            attachments,
+        })
+    }
 }
 
 /// The data attached to an application command interaction.
@@ -391,6 +596,60 @@ impl ApplicationCommandData {
     pub fn with_guild_id(mut self, guild_id: impl Into<Snowflake>) -> Self {
         self.guild_id = Some(guild_id.into());
         self
+    }
+
+    /// Decodes application command data from a Discord interaction data
+    /// object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or an option is
+    /// malformed.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "command", Snowflake::ZERO)
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, guild_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?.unwrap_or(guild_id);
+        let resolved_path = cast::field_path(path, "resolved");
+        let resolved = cast::optional_object(object, path, "resolved")?
+            .map(|resolved| ResolvedData::from_object_at(resolved, &resolved_path, guild_id))
+            .transpose()?;
+
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            kind: cast::required_enum(
+                object,
+                path,
+                "type",
+                "an application command type",
+                ApplicationCommandType::from_value,
+            )?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            target_id: cast::optional_snowflake(object, path, "target_id")?,
+            options: cast::optional_array_of(
+                object,
+                path,
+                "options",
+                ApplicationCommandOption::from_value_at,
+            )?
+            .unwrap_or_default(),
+            resolved,
+        })
     }
 
     /// Sets the context menu target ID.
@@ -465,6 +724,48 @@ impl MessageComponentData {
             values: Vec::new(),
             resolved: None,
         }
+    }
+
+    /// Decodes message component data from a Discord interaction data object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "component_data", Snowflake::ZERO)
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, guild_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let resolved_path = cast::field_path(path, "resolved");
+        let resolved = cast::optional_object(object, path, "resolved")?
+            .map(|resolved| ResolvedData::from_object_at(resolved, &resolved_path, guild_id))
+            .transpose()?;
+        Ok(Self {
+            custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+            component_type: cast::required_enum(
+                object,
+                path,
+                "component_type",
+                "a component type",
+                ComponentType::from_value,
+            )?,
+            values: cast::optional_string_array(object, path, "values")?.unwrap_or_default(),
+            resolved,
+        })
     }
 
     /// Sets the selected values.
@@ -571,6 +872,90 @@ pub enum ModalSubmitComponent {
 }
 
 impl ModalSubmitComponent {
+    /// Decodes a submitted component from a Discord modal component object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the component type is missing, unknown or
+    /// unsupported, or a field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "modal_component")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let kind = cast::required_enum(
+            object,
+            path,
+            "type",
+            "a component type",
+            ComponentType::from_value,
+        )?;
+        match kind {
+            ComponentType::ActionRow => Ok(Self::ActionRow {
+                components: cast::optional_array_of(
+                    object,
+                    path,
+                    "components",
+                    Self::from_value_at,
+                )?
+                .unwrap_or_default(),
+            }),
+            ComponentType::TextInput => Ok(Self::TextInput {
+                custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+                value: cast::required_string(object, path, "value")?.to_owned(),
+            }),
+            ComponentType::StringSelect
+            | ComponentType::UserSelect
+            | ComponentType::RoleSelect
+            | ComponentType::MentionableSelect
+            | ComponentType::ChannelSelect => Ok(Self::Select {
+                custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+                kind,
+                values: cast::optional_string_array(object, path, "values")?.unwrap_or_default(),
+            }),
+            ComponentType::FileUpload => Ok(Self::FileUpload {
+                custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+                values: cast::optional_string_array(object, path, "values")?.unwrap_or_default(),
+            }),
+            ComponentType::TextDisplay => Ok(Self::TextDisplay {
+                content: cast::required_string(object, path, "content")?.to_owned(),
+            }),
+            ComponentType::Label => {
+                let component_path = cast::field_path(path, "component");
+                Ok(Self::Label {
+                    component: Box::new(Self::from_object_at(
+                        cast::required_object(object, path, "component")?,
+                        &component_path,
+                    )?),
+                })
+            }
+            ComponentType::RadioGroup => Ok(Self::RadioGroup {
+                custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+                id: cast::required_u64(object, path, "id")?,
+                value: cast::optional_string(object, path, "value")?.map(str::to_owned),
+            }),
+            ComponentType::CheckboxGroup => Ok(Self::CheckboxGroup {
+                custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+                id: cast::required_u64(object, path, "id")?,
+                values: cast::optional_string_array(object, path, "values")?.unwrap_or_default(),
+            }),
+            ComponentType::Checkbox => Ok(Self::Checkbox {
+                custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+                id: cast::required_u64(object, path, "id")?,
+                value: cast::required_bool(object, path, "value")?,
+            }),
+            _ => Err(CastError::invalid_value(
+                path,
+                "a supported modal component type",
+            )),
+        }
+    }
+
     /// Returns the component's custom ID, if it has one.
     #[must_use]
     pub fn custom_id(&self) -> Option<&str> {
@@ -646,6 +1031,47 @@ impl ModalSubmitData {
         }
     }
 
+    /// Decodes modal submission data from a Discord interaction data object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a component is
+    /// malformed.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "modal", Snowflake::ZERO)
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, guild_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let resolved_path = cast::field_path(path, "resolved");
+        let resolved = cast::optional_object(object, path, "resolved")?
+            .map(|resolved| ResolvedData::from_object_at(resolved, &resolved_path, guild_id))
+            .transpose()?;
+        Ok(Self {
+            custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+            components: cast::optional_array_of(
+                object,
+                path,
+                "components",
+                ModalSubmitComponent::from_value_at,
+            )?
+            .unwrap_or_default(),
+            resolved,
+        })
+    }
+
     /// Sets the submitted components.
     #[must_use]
     pub fn with_components(mut self, components: Vec<ModalSubmitComponent>) -> Self {
@@ -688,6 +1114,51 @@ pub enum InteractionData {
 }
 
 impl InteractionData {
+    /// Decodes interaction data from a Discord interaction data object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the interaction type has no decodable data or
+    /// a field is malformed.
+    pub fn from_value(value: &Value, kind: InteractionType) -> Result<Self, CastError> {
+        Self::from_value_at(value, "data", kind, Snowflake::ZERO)
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        kind: InteractionType,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, kind, guild_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        kind: InteractionType,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        match kind {
+            InteractionType::ApplicationCommand | InteractionType::Autocomplete => {
+                Ok(Self::ApplicationCommand(Box::new(
+                    ApplicationCommandData::from_object_at(object, path, guild_id)?,
+                )))
+            }
+            InteractionType::MessageComponent => Ok(Self::MessageComponent(
+                MessageComponentData::from_object_at(object, path, guild_id)?,
+            )),
+            InteractionType::ModalSubmit => Ok(Self::ModalSubmit(ModalSubmitData::from_object_at(
+                object, path, guild_id,
+            )?)),
+            InteractionType::Ping => Err(CastError::invalid_value(
+                path,
+                "interaction data for a non-ping interaction",
+            )),
+        }
+    }
+
     /// Returns the application command data, if present.
     #[must_use]
     pub fn application_command(&self) -> Option<&ApplicationCommandData> {
@@ -815,6 +1286,108 @@ impl Interaction {
     pub fn with_data(mut self, data: InteractionData) -> Self {
         self.data = Some(data);
         self
+    }
+
+    /// Decodes an interaction from a Discord interaction object.
+    ///
+    /// Guild interactions expose a `member`; direct-message interactions expose
+    /// a plain `user`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or the data does
+    /// not match the interaction type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        let path = "interaction";
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        let kind = cast::required_enum(
+            object,
+            path,
+            "type",
+            "an interaction type",
+            InteractionType::from_value,
+        )?;
+        let application_id = cast::required_snowflake(object, path, "application_id")?;
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?;
+
+        let data = match cast::optional_object(object, path, "data")? {
+            Some(value) => {
+                let data_path = cast::field_path(path, "data");
+                Some(InteractionData::from_object_at(
+                    value,
+                    &data_path,
+                    kind,
+                    guild_id.unwrap_or_default(),
+                )?)
+            }
+            None => None,
+        };
+
+        let user = if let Some(member) = cast::optional_object(object, path, "member")? {
+            let member_path = cast::field_path(path, "member");
+            Some(MessageAuthor::from_member(Member::from_object_at(
+                member,
+                &member_path,
+                guild_id.unwrap_or_default(),
+                &[],
+            )?))
+        } else if let Some(user) = cast::optional_object(object, path, "user")? {
+            let user_path = cast::field_path(path, "user");
+            Some(MessageAuthor::from_user(User::from_object_at(
+                user, &user_path,
+            )?))
+        } else {
+            None
+        };
+
+        let mut authorizing_integration_owners = HashMap::new();
+        if let Some(owners) = cast::optional_object(object, path, "authorizing_integration_owners")?
+        {
+            let owners_path = cast::field_path(path, "authorizing_integration_owners");
+            for (name, value) in owners.iter() {
+                let Ok(kind) = name.parse::<u8>() else {
+                    continue;
+                };
+                let Some(kind) = ApplicationIntegrationType::from_value(kind) else {
+                    continue;
+                };
+                let owner_id =
+                    cast::snowflake(value, &cast::field_path(&owners_path, kind.as_str()))?;
+                authorizing_integration_owners.insert(kind, owner_id);
+            }
+        }
+
+        Ok(Self {
+            id,
+            kind,
+            application_id,
+            data,
+            guild_id,
+            channel_id: cast::optional_snowflake(object, path, "channel_id")?,
+            user,
+            token: cast::required_string(object, path, "token")?.to_owned(),
+            version: cast::optional_u8(object, path, "version")?.unwrap_or(1),
+            locale: cast::optional_string(object, path, "locale")?.map(str::to_owned),
+            guild_locale: cast::optional_string(object, path, "guild_locale")?.map(str::to_owned),
+            app_permissions: cast::optional_permission_bits(object, path, "app_permissions")?
+                .map(Permissions::from_bits),
+            context: cast::optional_enum(
+                object,
+                path,
+                "context",
+                "an interaction context type",
+                InteractionContextType::from_value,
+            )?,
+            attachment_size_limit: cast::optional_u64(object, path, "attachment_size_limit")?,
+            entitlement_sku_ids: cast::optional_snowflake_array(
+                object,
+                path,
+                "entitlement_sku_ids",
+            )?
+            .unwrap_or_default(),
+            authorizing_integration_owners,
+        })
     }
 
     /// Sets the guild ID.
@@ -1008,6 +1581,18 @@ impl InteractionMessage {
     #[must_use]
     pub const fn new(message: Message) -> Self {
         Self { message }
+    }
+
+    /// Decodes an interaction message from a Discord message object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the message payload is malformed.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Ok(Self::new(Message::from_value_at(
+            value,
+            "interaction_message",
+        )?))
     }
 
     /// Returns the underlying message.
@@ -1716,6 +2301,7 @@ impl InteractionResponse {
 mod tests {
     use std::time::SystemTime;
 
+    use abc::User as _;
     use abc::{HasId, Snowflake};
     use data::json;
     use enums::{
@@ -2323,6 +2909,532 @@ mod tests {
         assert_eq!(
             bad_owner.to_string(),
             "field `interaction_metadata.authorizing_integration_owners.guild_install` must be a snowflake"
+        );
+    }
+
+    #[test]
+    fn decodes_application_command_interactions() {
+        let value = json::from_str(
+            r#"{
+                "id": "100",
+                "application_id": "200",
+                "type": 2,
+                "data": {
+                    "id": "300",
+                    "name": "greet",
+                    "type": 1,
+                    "guild_id": "400",
+                    "target_id": "500",
+                    "options": [
+                        {
+                            "type": 1,
+                            "name": "sub",
+                            "options": [
+                                {"type": 3, "name": "name", "value": "winter"},
+                                {"type": 4, "name": "count", "value": 3},
+                                {"type": 5, "name": "loud", "value": true},
+                                {"type": 10, "name": "ratio", "value": 1.5},
+                                {"type": 6, "name": "target", "value": "1"},
+                                {"type": 11, "name": "file", "value": "7"}
+                            ]
+                        }
+                    ],
+                    "resolved": {
+                        "users": {
+                            "1": {"id": "1", "username": "winter", "global_name": "Winter"}
+                        },
+                        "members": {
+                            "1": {
+                                "nick": "Frost",
+                                "roles": ["2"],
+                                "joined_at": "2021-08-01T12:34:56Z"
+                            }
+                        },
+                        "roles": {"2": {"id": "2", "name": "role", "color": 255}},
+                        "channels": {"3": {"id": "3", "type": 0, "name": "general"}},
+                        "messages": {
+                            "4": {
+                                "id": "4",
+                                "channel_id": "3",
+                                "author": {"id": "1", "username": "winter"},
+                                "timestamp": "2021-08-01T12:34:56Z"
+                            }
+                        },
+                        "attachments": {
+                            "7": {
+                                "id": "7",
+                                "filename": "a.txt",
+                                "size": 1,
+                                "url": "https://cdn.example/a.txt",
+                                "proxy_url": "https://proxy.example/a.txt"
+                            }
+                        }
+                    }
+                },
+                "guild_id": "400",
+                "channel_id": "3",
+                "member": {
+                    "nick": "Frost",
+                    "roles": ["2"],
+                    "joined_at": "2021-08-01T12:34:56Z",
+                    "user": {"id": "1", "username": "winter"}
+                },
+                "token": "tok",
+                "version": 1,
+                "locale": "en-US",
+                "guild_locale": "en-GB",
+                "app_permissions": "8",
+                "context": 1,
+                "attachment_size_limit": 10485760,
+                "entitlement_sku_ids": ["900"],
+                "authorizing_integration_owners": {"0": "400", "1": "1", "9": "7"}
+            }"#,
+        )
+        .unwrap();
+
+        let interaction = Interaction::from_value(&value).unwrap();
+        assert_eq!(interaction.id, Snowflake::new(100));
+        assert_eq!(interaction.kind, InteractionType::ApplicationCommand);
+        assert_eq!(interaction.application_id, Snowflake::new(200));
+        assert_eq!(interaction.guild_id, Some(Snowflake::new(400)));
+        assert_eq!(interaction.channel_id, Some(Snowflake::new(3)));
+        assert_eq!(interaction.token, "tok");
+        assert_eq!(interaction.version, 1);
+        assert_eq!(interaction.locale.as_deref(), Some("en-US"));
+        assert_eq!(interaction.guild_locale.as_deref(), Some("en-GB"));
+        assert_eq!(interaction.app_permissions, Some(Permissions::from_bits(8)));
+        assert_eq!(interaction.context, Some(InteractionContextType::BotDm));
+        assert_eq!(interaction.attachment_size_limit, Some(10_485_760));
+        assert_eq!(interaction.entitlement_sku_ids, [Snowflake::new(900)]);
+        assert_eq!(interaction.authorizing_integration_owners.len(), 2);
+        assert_eq!(
+            interaction
+                .authorizing_integration_owners
+                .get(&ApplicationIntegrationType::GuildInstall),
+            Some(&Snowflake::new(400))
+        );
+        assert_eq!(
+            interaction
+                .authorizing_integration_owners
+                .get(&ApplicationIntegrationType::UserInstall),
+            Some(&Snowflake::new(1))
+        );
+
+        assert!(interaction.user.as_ref().unwrap().is_member());
+        assert_eq!(interaction.user.as_ref().unwrap().id(), Snowflake::new(1));
+        assert_eq!(interaction.user.as_ref().unwrap().display_name(), "Frost");
+
+        let data = interaction.data.as_ref().unwrap();
+        assert_eq!(data.command_name(), Some("greet"));
+        let command = data.application_command().unwrap();
+        assert_eq!(command.id, Snowflake::new(300));
+        assert_eq!(command.kind, ApplicationCommandType::ChatInput);
+        assert_eq!(command.guild_id, Some(Snowflake::new(400)));
+        assert_eq!(command.target_id, Some(Snowflake::new(500)));
+
+        let sub = command.option("sub").unwrap();
+        assert_eq!(sub.kind, ApplicationCommandOptionType::Subcommand);
+        assert_eq!(
+            sub.option("name")
+                .and_then(ApplicationCommandOption::value)
+                .and_then(CommandOptionValue::as_str),
+            Some("winter")
+        );
+        assert_eq!(
+            sub.option("count")
+                .and_then(ApplicationCommandOption::value)
+                .and_then(CommandOptionValue::as_i64),
+            Some(3)
+        );
+        assert_eq!(
+            sub.option("loud")
+                .and_then(ApplicationCommandOption::value)
+                .and_then(CommandOptionValue::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            sub.option("ratio")
+                .and_then(ApplicationCommandOption::value)
+                .and_then(CommandOptionValue::as_f64),
+            Some(1.5)
+        );
+        assert_eq!(
+            sub.option("target")
+                .and_then(ApplicationCommandOption::value)
+                .and_then(CommandOptionValue::as_snowflake),
+            Some(Snowflake::new(1))
+        );
+        assert_eq!(
+            sub.option("file")
+                .and_then(ApplicationCommandOption::value)
+                .and_then(CommandOptionValue::as_snowflake),
+            Some(Snowflake::new(7))
+        );
+
+        let resolved = command.resolved.as_ref().unwrap();
+        assert_eq!(resolved.users.len(), 1);
+        assert_eq!(
+            resolved
+                .users
+                .get(&Snowflake::new(1))
+                .and_then(|user| user.global_name.as_deref()),
+            Some("Winter")
+        );
+
+        let member = resolved.members.get(&Snowflake::new(1)).unwrap();
+        assert_eq!(member.nick.as_deref(), Some("Frost"));
+        assert_eq!(member.user.id, Snowflake::new(1));
+        assert_eq!(member.roles.len(), 1);
+        assert_eq!(member.roles[0].id, Snowflake::new(2));
+
+        let role = resolved.roles.get(&Snowflake::new(2)).unwrap();
+        assert_eq!(role.name, "role");
+
+        let channel = resolved.channels.get(&Snowflake::new(3)).unwrap();
+        assert_eq!(channel.name, "general");
+
+        assert_eq!(
+            resolved
+                .messages
+                .get(&Snowflake::new(4))
+                .map(|message| message.author.id()),
+            Some(Snowflake::new(1))
+        );
+        assert_eq!(
+            resolved
+                .attachments
+                .get(&Snowflake::new(7))
+                .map(|attachment| attachment.filename.as_str()),
+            Some("a.txt")
+        );
+    }
+
+    #[test]
+    fn decodes_component_autocomplete_and_ping_interactions() {
+        let component = Interaction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "10",
+                    "application_id": "20",
+                    "type": 3,
+                    "data": {
+                        "custom_id": "choose",
+                        "component_type": 3,
+                        "values": ["1", "2"],
+                        "resolved": {
+                            "users": {
+                                "1": {"id": "1", "username": "winter"},
+                                "2": {"id": "2", "username": "member"}
+                            }
+                        }
+                    },
+                    "guild_id": "30",
+                    "token": "tok"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(component.kind, InteractionType::MessageComponent);
+        let data = component.data.as_ref().unwrap();
+        assert_eq!(data.custom_id(), Some("choose"));
+        let selected = data.message_component().unwrap();
+        assert_eq!(selected.component_type, ComponentType::StringSelect);
+        assert_eq!(selected.values, ["1".to_owned(), "2".to_owned()]);
+        assert!(selected.is_select());
+        assert_eq!(
+            selected
+                .resolved
+                .as_ref()
+                .map(|resolved| resolved.users.len()),
+            Some(2)
+        );
+
+        let autocomplete = Interaction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "11",
+                    "application_id": "20",
+                    "type": 4,
+                    "data": {
+                        "id": "300",
+                        "name": "search",
+                        "type": 1,
+                        "options": [
+                            {"type": 3, "name": "query", "value": "win", "focused": true}
+                        ]
+                    },
+                    "token": "tok"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(autocomplete.kind, InteractionType::Autocomplete);
+        let command = autocomplete
+            .data
+            .as_ref()
+            .and_then(InteractionData::application_command)
+            .unwrap();
+        let query = command.option("query").unwrap();
+        assert!(query.focused);
+        assert_eq!(
+            query.value().and_then(CommandOptionValue::as_str),
+            Some("win")
+        );
+
+        let ping = Interaction::from_value(
+            &json::from_str(r#"{"id":"12","application_id":"20","type":1,"token":"tok"}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(ping.kind, InteractionType::Ping);
+        assert!(ping.data.is_none());
+        assert!(ping.guild_id.is_none());
+        assert!(ping.user.is_none());
+        assert!(ping.authorizing_integration_owners.is_empty());
+
+        let direct_message = Interaction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "13",
+                    "application_id": "20",
+                    "type": 2,
+                    "data": {"id": "300", "name": "greet", "type": 1},
+                    "user": {"id": "1", "username": "winter"},
+                    "token": "tok"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(!direct_message.user.as_ref().unwrap().is_member());
+
+        let ping_data = Interaction::from_value(
+            &json::from_str(
+                r#"{"id":"14","application_id":"20","type":1,"data":{},"token":"tok"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            ping_data.to_string(),
+            "field `interaction.data` must be interaction data for a non-ping interaction"
+        );
+
+        let message = InteractionMessage::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "70",
+                    "channel_id": "20",
+                    "author": {"id": "1", "username": "winter"},
+                    "timestamp": "2021-08-01T12:34:56Z"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(message.id, Snowflake::new(70));
+        assert_eq!(message.as_message().channel_id, Snowflake::new(20));
+        assert_eq!(message.into_message().author.id(), Snowflake::new(1));
+    }
+
+    #[test]
+    fn decodes_modal_submit_interactions() {
+        let interaction = Interaction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "10",
+                    "application_id": "20",
+                    "type": 5,
+                    "data": {
+                        "custom_id": "form",
+                        "components": [
+                            {
+                                "type": 1,
+                                "components": [
+                                    {"type": 4, "custom_id": "name", "value": "winter"},
+                                    {
+                                        "type": 3,
+                                        "custom_id": "colour",
+                                        "values": ["blue", "green"]
+                                    }
+                                ]
+                            },
+                            {
+                                "type": 18,
+                                "component": {"type": 23, "custom_id": "agree", "id": 9, "value": true}
+                            },
+                            {"type": 10, "content": "Read this"},
+                            {
+                                "type": 19,
+                                "custom_id": "files",
+                                "values": ["501", "502"]
+                            },
+                            {"type": 21, "custom_id": "size", "id": 10, "value": "large"},
+                            {
+                                "type": 22,
+                                "custom_id": "toppings",
+                                "id": 11,
+                                "values": ["cheese"]
+                            }
+                        ],
+                        "resolved": {
+                            "attachments": {
+                                "501": {
+                                    "id": "501",
+                                    "filename": "a.txt",
+                                    "size": 1,
+                                    "url": "https://cdn.example/a.txt",
+                                    "proxy_url": "https://proxy.example/a.txt"
+                                }
+                            }
+                        }
+                    },
+                    "token": "tok"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(interaction.kind, InteractionType::ModalSubmit);
+        let data = interaction.data.as_ref().unwrap();
+        assert_eq!(data.custom_id(), Some("form"));
+        let modal = data.modal_submit().unwrap();
+        assert_eq!(modal.components.len(), 6);
+        assert_eq!(
+            modal
+                .component("name")
+                .and_then(ModalSubmitComponent::text_value),
+            Some("winter")
+        );
+        assert_eq!(
+            modal
+                .component("colour")
+                .and_then(ModalSubmitComponent::values),
+            Some(["blue".to_owned(), "green".to_owned()].as_slice())
+        );
+        assert_eq!(
+            modal
+                .component("agree")
+                .and_then(ModalSubmitComponent::custom_id),
+            Some("agree")
+        );
+        assert!(matches!(
+            modal.component("agree"),
+            Some(ModalSubmitComponent::Label { component })
+                if matches!(component.as_ref(), ModalSubmitComponent::Checkbox { value: true, .. })
+        ));
+        assert!(matches!(
+            modal.components[2],
+            ModalSubmitComponent::TextDisplay { .. }
+        ));
+        assert_eq!(
+            modal
+                .component("files")
+                .and_then(ModalSubmitComponent::values),
+            Some(["501".to_owned(), "502".to_owned()].as_slice())
+        );
+        assert!(matches!(
+            modal.component("size"),
+            Some(ModalSubmitComponent::RadioGroup { value: Some(value), .. }) if value == "large"
+        ));
+        assert!(matches!(
+            modal.component("toppings"),
+            Some(ModalSubmitComponent::CheckboxGroup { .. })
+        ));
+        assert_eq!(
+            modal
+                .resolved
+                .as_ref()
+                .map(|resolved| resolved.attachments.len()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn reports_interaction_decoding_errors() {
+        let missing_token = Interaction::from_value(
+            &json::from_str(r#"{"id":"1","application_id":"2","type":1}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing_token.to_string(),
+            "missing field `interaction.token`"
+        );
+
+        let bad_type = Interaction::from_value(
+            &json::from_str(r#"{"id":"1","application_id":"2","type":99,"token":"tok"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_type.to_string(),
+            "field `interaction.type` must be an interaction type"
+        );
+
+        let bad_option = Interaction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "1",
+                    "application_id": "2",
+                    "type": 2,
+                    "data": {
+                        "id": "3",
+                        "name": "greet",
+                        "type": 1,
+                        "options": [{"type": 4, "name": "count", "value": "nope"}]
+                    },
+                    "token": "tok"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_option.to_string(),
+            "field `interaction.data.options[0].value` must be an integer"
+        );
+
+        let bad_resolved_key = ResolvedData::from_value(
+            &json::from_str(r#"{"users":{"nope":{"id":"1","username":"winter"}}}"#).unwrap(),
+            1_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_resolved_key.to_string(),
+            "field `resolved.users.nope` must be a snowflake key"
+        );
+
+        let unsupported_modal = ModalSubmitComponent::from_value(
+            &json::from_str(r#"{"type": 2, "custom_id": "button"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            unsupported_modal.to_string(),
+            "field `modal_component` must be a supported modal component type"
+        );
+
+        let bad_modal_value = Interaction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "1",
+                    "application_id": "2",
+                    "type": 5,
+                    "data": {
+                        "custom_id": "form",
+                        "components": [
+                            {"type": 23, "custom_id": "agree", "id": 9, "value": "yes"}
+                        ]
+                    },
+                    "token": "tok"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_modal_value.to_string(),
+            "field `interaction.data.components[0].value` must be a boolean"
         );
     }
 }

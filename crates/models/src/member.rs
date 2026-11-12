@@ -86,6 +86,15 @@ impl Member {
         roles: &[Role],
     ) -> Result<Self, CastError> {
         let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, guild_id, roles)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+        roles: &[Role],
+    ) -> Result<Self, CastError> {
         let user_path = cast::field_path(path, "user");
         let user = User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?;
         Self::from_object_with_user_at(object, path, guild_id, roles, user)
