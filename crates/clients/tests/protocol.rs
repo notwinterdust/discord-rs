@@ -150,3 +150,34 @@ fn threaded_gateway_lifecycle_round_trip() {
     assert!(coordinator.shutdown().is_ok());
     assert_eq!(event_count.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn concurrent_shard_orchestration_and_startup_buckets() {
+    use clients::{ConcurrentShardRuntime, ShardManager};
+
+    let manager = ShardManager::from_gateway_recommendation(2, 1).unwrap();
+    assert_eq!(manager.shards().len(), 2);
+    // Bucket verification
+    assert_eq!(manager.identify_delay(manager.shards()[0]).as_secs(), 0);
+    assert_eq!(manager.identify_delay(manager.shards()[1]).as_secs(), 0);
+
+    let runtime = ConcurrentShardRuntime::new(manager);
+
+    let handles = runtime.spawn(move |shard, tx| {
+        let _ = tx.send((shard, format!("SHARD_{}_READY", shard.id)));
+    });
+
+    assert_eq!(handles.len(), 2);
+
+    let mut ready_shards = Vec::new();
+    for _ in 0..2 {
+        if let Ok((shard, msg)) = runtime.event_rx.recv_timeout(std::time::Duration::from_secs(1)) {
+            ready_shards.push((shard.id, msg));
+        }
+    }
+
+    assert_eq!(ready_shards.len(), 2);
+    for handle in handles {
+        assert!(handle.join().is_ok());
+    }
+}

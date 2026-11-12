@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod api;
+pub mod bot;
 pub mod cache;
 pub mod client;
 pub mod connection;
@@ -20,6 +21,7 @@ pub mod http;
 pub mod shard;
 
 pub use api::DiscordApi;
+pub use bot::{Bot, BotBuilder, EventWaiter, Hooks};
 pub use cache::{Cache, CacheConfig, ClientCache, MemberCache};
 pub use client::{
     Client, ClientState, HttpClient, PendingResponse, RetryPolicy, SecureTransport, TcpTransport,
@@ -38,4 +40,4 @@ pub use gateway::{
 };
 pub use health::HealthReport;
 pub use http::{HttpMethod, HttpRequest, HttpResponse, RateLimit, RateLimitScope};
-pub use shard::{Shard, ShardManager};
+pub use shard::{ConcurrentShardRuntime, Shard, ShardHandle, ShardManager};
