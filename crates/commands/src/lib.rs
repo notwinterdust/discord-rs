@@ -107,7 +107,7 @@ impl CommandRegistry {
         let Some(rest) = message.strip_prefix(&self.prefix) else {
             return false;
         };
-        let mut words = tokenize(rest);
+        let mut words = Self::tokenize(rest);
         let Some(name) = words.next() else {
             return false;
         };
@@ -116,7 +116,7 @@ impl CommandRegistry {
             arguments: words.collect(),
         };
         let Some(command) = self.commands.iter_mut().find(|command| {
-            command.name == name || command.aliases.iter().any(|alias| alias == name)
+            command.name == name || command.aliases.iter().any(|alias| alias == &name)
         }) else {
             return false;
         };
