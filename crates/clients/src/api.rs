@@ -141,4 +141,19 @@ impl<T: Transport> DiscordApi<T> {
         self.client
             .execute_json(self.client.post(format!("webhooks/{application_id}/{token}")), body)
     }
+
+    /// Replaces application commands for a guild.
+    pub fn overwrite_guild_commands(
+        &self,
+        application_id: u64,
+        guild_id: u64,
+        body: &Value,
+    ) -> Result<HttpResponse, HttpError> {
+        self.client.execute_json(
+            self.client.post(format!(
+                "applications/{application_id}/guilds/{guild_id}/commands"
+            )),
+            body,
+        )
+    }
 }
