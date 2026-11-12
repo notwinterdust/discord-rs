@@ -6,6 +6,9 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use data::Value;
@@ -463,6 +466,132 @@ impl<T: Transport> HttpClient<T> {
     }
 }
 
+/// A pending response handle for an asynchronous HTTP request executed by [`ThreadedRequestExecutor`].
+pub struct PendingResponse {
+    receiver: Receiver<Result<HttpResponse, HttpError>>,
+}
+
+impl PendingResponse {
+    /// Waits for the HTTP response, blocking the current thread until completion.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HttpError`] if the request failed or worker thread disconnected.
+    pub fn wait(self) -> Result<HttpResponse, HttpError> {
+        self.receiver.recv().map_err(|_| HttpError::transport("worker thread disconnected"))?
+    }
+
+    /// Waits for the HTTP response up to the given timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HttpError`] on request failure, timeout, or worker disconnection.
+    pub fn wait_timeout(self, timeout: Duration) -> Result<HttpResponse, HttpError> {
+        match self.receiver.recv_timeout(timeout) {
+            Ok(result) => result,
+            Err(RecvTimeoutError::Timeout) => Err(HttpError::transport("request timed out waiting for response")),
+            Err(RecvTimeoutError::Disconnected) => Err(HttpError::transport("worker thread disconnected")),
+        }
+    }
+}
+
+enum RequestMessage {
+    Execute {
+        request: HttpRequest,
+        response_sender: Sender<Result<HttpResponse, HttpError>>,
+    },
+    Shutdown,
+}
+
+/// A threaded background executor for HTTP requests.
+///
+/// Dispatches requests to background worker threads so HTTP I/O does not block
+/// the main thread or gateway event processing loop.
+pub struct ThreadedRequestExecutor {
+    sender: Option<Sender<RequestMessage>>,
+    workers: Vec<JoinHandle<()>>,
+}
+
+impl ThreadedRequestExecutor {
+    /// Spawns a new threaded request executor with the given number of worker threads.
+    #[must_use]
+    pub fn new<T: Transport + Send + Sync + 'static>(transport: Arc<T>, worker_count: usize) -> Self {
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        let count = worker_count.max(1);
+        let mut workers = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            let rx = Arc::clone(&receiver);
+            let tx_transport = Arc::clone(&transport);
+
+            let handle = thread::spawn(move || {
+                loop {
+                    let msg = {
+                        let lock = rx.lock().unwrap();
+                        lock.recv()
+                    };
+
+                    match msg {
+                        Ok(RequestMessage::Execute {
+                            request,
+                            response_sender,
+                        }) => {
+                            let result = tx_transport.execute(&request);
+                            let _ = response_sender.send(result);
+                        }
+                        Ok(RequestMessage::Shutdown) | Err(_) => break,
+                    }
+                }
+            });
+            workers.push(handle);
+        }
+
+        Self {
+            sender: Some(sender),
+            workers,
+        }
+    }
+
+    /// Enqueues an HTTP request for asynchronous execution and returns a pending handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HttpError`] if the executor has shut down.
+    pub fn submit(&self, request: HttpRequest) -> Result<PendingResponse, HttpError> {
+        if let Some(ref sender) = self.sender {
+            let (tx, rx) = mpsc::channel();
+            sender
+                .send(RequestMessage::Execute {
+                    request,
+                    response_sender: tx,
+                })
+                .map_err(|_| HttpError::transport("executor shut down"))?;
+            Ok(PendingResponse { receiver: rx })
+        } else {
+            Err(HttpError::transport("executor is closed"))
+        }
+    }
+
+    /// Shuts down all worker threads gracefully.
+    pub fn shutdown(&mut self) {
+        if let Some(sender) = self.sender.take() {
+            for _ in 0..self.workers.len() {
+                let _ = sender.send(RequestMessage::Shutdown);
+            }
+        }
+        for handle in self.workers.drain(..) {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for ThreadedRequestExecutor {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -561,5 +690,39 @@ mod tests {
                 HttpMethod::Delete,
             ]
         );
+    }
+
+    #[test]
+    fn threaded_request_executor_executes_requests_asynchronously() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        struct ThreadSafeMockTransport {
+            count: AtomicUsize,
+        }
+
+        impl Transport for ThreadSafeMockTransport {
+            fn execute(&self, _request: &HttpRequest) -> Result<HttpResponse, HttpError> {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                Ok(HttpResponse::new(200, Vec::new(), Vec::new()))
+            }
+        }
+
+        let transport = Arc::new(ThreadSafeMockTransport {
+            count: AtomicUsize::new(0),
+        });
+
+        let mut executor = super::ThreadedRequestExecutor::new(Arc::clone(&transport), 2);
+        let pending1 = executor.submit(HttpRequest::new(HttpMethod::Get, "users/@me")).unwrap();
+        let pending2 = executor.submit(HttpRequest::new(HttpMethod::Get, "gateway")).unwrap();
+
+        let resp1 = pending1.wait().unwrap();
+        let resp2 = pending2.wait_timeout(std::time::Duration::from_secs(2)).unwrap();
+
+        assert_eq!(resp1.status, 200);
+        assert_eq!(resp2.status, 200);
+        assert_eq!(transport.count.load(Ordering::SeqCst), 2);
+
+        executor.shutdown();
     }
 }

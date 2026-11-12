@@ -22,7 +22,8 @@ pub mod shard;
 pub use api::DiscordApi;
 pub use cache::Cache;
 pub use client::{
-    Client, ClientState, HttpClient, RetryPolicy, SecureTransport, TcpTransport, Transport,
+    Client, ClientState, HttpClient, PendingResponse, RetryPolicy, SecureTransport, TcpTransport,
+    ThreadedRequestExecutor, Transport,
 };
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
