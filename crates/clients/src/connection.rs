@@ -278,6 +278,11 @@ impl<T: GatewayTransport> GatewayConnection<T> {
         (self.runtime, self.transport)
     }
 
+    /// Attaches an asynchronous threaded event dispatcher to forward all events.
+    pub fn attach_threaded_dispatcher(&mut self, dispatcher: &crate::events::ThreadedEventDispatcher) {
+        dispatcher.attach_to(self.runtime.events_mut());
+    }
+
     /// Registers a handler for the given filter.
     pub fn on(
         &mut self,

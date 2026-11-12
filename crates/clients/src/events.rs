@@ -500,6 +500,15 @@ impl ThreadedEventDispatcherBuilder {
 }
 
 impl ThreadedEventDispatcher {
+    /// Connects this dispatcher to an [`EventDispatcher`], forwarding all received events.
+    pub fn attach_to(&self, dispatcher: &mut EventDispatcher) {
+        let sender = self.sender.clone();
+        dispatcher.on_any(move |event| {
+            if let Some(ref sender) = sender {
+                let _ = sender.send(ThreadedDispatcherMessage::Dispatch(event.clone()));
+            }
+        });
+    }
     /// Creates a builder.
     #[must_use]
     pub fn builder() -> ThreadedEventDispatcherBuilder {

@@ -16,3 +16,137 @@ fn cache_evicts_when_full() {
     assert_eq!(cache.len(), 1);
     assert_eq!(cache.get(2), Some(&"two"));
 }
+
+#[test]
+fn threaded_gateway_lifecycle_round_trip() {
+    use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Duration;
+
+    use clients::{
+        GatewayConfig, GatewayConnection, GatewayFrame, GatewayTransport, GatewayTransportError,
+        ThreadedCoordinator, ThreadedEventDispatcher,
+    };
+    use data::gateway::{GatewayOpcode, GatewayPayload, Hello};
+    use data::Value;
+    use enums::Intents;
+
+    struct ScriptedTransport {
+        frames: VecDeque<GatewayFrame>,
+        sent_heartbeats: AtomicUsize,
+    }
+
+    impl GatewayTransport for ScriptedTransport {
+        fn connect(&mut self, _url: &str) -> Result<(), GatewayTransportError> {
+            Ok(())
+        }
+
+        fn recv(&mut self, _timeout: Option<Duration>) -> Result<GatewayFrame, GatewayTransportError> {
+            if let Some(frame) = self.frames.pop_front() {
+                Ok(frame)
+            } else {
+                thread::sleep(Duration::from_millis(5));
+                Ok(GatewayFrame::Timeout)
+            }
+        }
+
+        fn send(&mut self, text: &str) -> Result<(), GatewayTransportError> {
+            if text.contains(r#""op":1"#) {
+                self.sent_heartbeats.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(())
+        }
+
+        fn close(&mut self) {}
+    }
+
+    let mut frames = VecDeque::new();
+    let hello = GatewayPayload::new(
+        GatewayOpcode::Hello,
+        Hello { heartbeat_interval: 10 }.to_value(),
+    )
+    .to_json();
+    frames.push_back(GatewayFrame::Text(hello));
+
+    let mut typing_data = data::Object::new();
+    typing_data.insert("channel_id", Value::String("123".to_string()));
+    typing_data.insert("user_id", Value::String("456".to_string()));
+    typing_data.insert("timestamp", Value::from(1700000000_u64));
+
+    let dispatch = GatewayPayload::new(
+        GatewayOpcode::Dispatch,
+        Value::Object(typing_data),
+    )
+    .with_sequence(1)
+    .with_event("TYPING_START")
+    .to_json();
+    frames.push_back(GatewayFrame::Text(dispatch));
+
+    let ack = GatewayPayload::new(GatewayOpcode::HeartbeatAck, Value::Null).to_json();
+    frames.push_back(GatewayFrame::Text(ack));
+
+    let transport = Arc::new(std::sync::Mutex::new(ScriptedTransport {
+        frames,
+        sent_heartbeats: AtomicUsize::new(0),
+    }));
+    let transport_clone = Arc::clone(&transport);
+
+    struct SharedTransport(Arc<std::sync::Mutex<ScriptedTransport>>);
+
+    impl GatewayTransport for SharedTransport {
+        fn connect(&mut self, url: &str) -> Result<(), GatewayTransportError> {
+            self.0.lock().unwrap().connect(url)
+        }
+
+        fn recv(&mut self, timeout: Option<Duration>) -> Result<GatewayFrame, GatewayTransportError> {
+            self.0.lock().unwrap().recv(timeout)
+        }
+
+        fn send(&mut self, text: &str) -> Result<(), GatewayTransportError> {
+            self.0.lock().unwrap().send(text)
+        }
+
+        fn close(&mut self) {
+            self.0.lock().unwrap().close();
+        }
+    }
+
+    let event_count = Arc::new(AtomicUsize::new(0));
+    let ec = Arc::clone(&event_count);
+
+    let dispatcher = ThreadedEventDispatcher::builder()
+        .on_name("TYPING_START", move |_| {
+            ec.fetch_add(1, Ordering::SeqCst);
+        })
+        .build();
+
+    let config = GatewayConfig::new("test-token", Intents::none());
+
+    let mut coordinator = ThreadedCoordinator::spawn(move |flag: Arc<AtomicBool>| {
+        let mut connection = GatewayConnection::new(config, SharedTransport(transport_clone));
+        connection.connect()?;
+        while !flag.load(Ordering::SeqCst) {
+            match connection.poll() {
+                Ok(Some(update)) => {
+                    if let Some(event) = update.event {
+                        let _ = dispatcher.dispatch(event);
+                    }
+                }
+                Ok(None) => {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(err) => {
+                    eprintln!("Poll error in test: {:?}", err);
+                    return Err(err);
+                }
+            }
+        }
+        Ok(())
+    });
+
+    thread::sleep(Duration::from_millis(40));
+    assert!(coordinator.shutdown().is_ok());
+    assert_eq!(event_count.load(Ordering::SeqCst), 1);
+}
