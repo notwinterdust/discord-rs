@@ -121,6 +121,62 @@ pub struct InteractionResponse {
     pub data: Option<Value>,
 }
 
+/// Tracks the acknowledgement state of an interaction.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum InteractionState {
+    /// No response has been sent.
+    #[default]
+    Pending,
+    /// The interaction was acknowledged.
+    Acknowledged,
+    /// The interaction token expired.
+    Expired,
+}
+
+/// A token-bound interaction response controller.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InteractionToken {
+    token: String,
+    state: InteractionState,
+}
+
+impl InteractionToken {
+    /// Creates a pending interaction token.
+    #[must_use]
+    pub fn new(token: impl Into<String>) -> Self {
+        Self {
+            token: token.into(),
+            state: InteractionState::Pending,
+        }
+    }
+
+    /// Returns the token.
+    #[must_use]
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    /// Returns the acknowledgement state.
+    #[must_use]
+    pub const fn state(&self) -> InteractionState {
+        self.state
+    }
+
+    /// Acknowledges the interaction.
+    pub fn acknowledge(&mut self) -> Result<(), &'static str> {
+        if self.state != InteractionState::Pending {
+            return Err("interaction is no longer pending");
+        }
+        self.state = InteractionState::Acknowledged;
+        Ok(())
+    }
+
+    /// Marks the interaction expired.
+    pub fn expire(&mut self) {
+        self.state = InteractionState::Expired;
+    }
+}
+
 impl InteractionResponse {
     /// Creates a response with a type.
     #[must_use]
