@@ -316,13 +316,13 @@ impl Asset {
             url = with_extension(&url, format.as_str());
         }
 
-        if let Some(static_format) = static_format
-            && !self.animated
-        {
-            if !static_format.is_static() {
-                return Err(AssetError::InvalidFormat);
+        if let Some(static_format) = static_format {
+            if !self.animated {
+                if !static_format.is_static() {
+                    return Err(AssetError::InvalidFormat);
+                }
+                url = with_extension(&url, static_format.as_str());
             }
-            url = with_extension(&url, static_format.as_str());
         }
 
         if let Some(size) = size {
