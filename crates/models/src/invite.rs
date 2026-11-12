@@ -9,8 +9,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, HasId, Snowflake};
+use data::{Object, Value};
 use enums::{ChannelType, InviteFlags, InviteTarget, InviteType, NsfwLevel, VerificationLevel};
 
+use crate::cast::{self, CastError};
 use crate::{Guild, GuildChannel, GuildScheduledEvent, PartialApplication, User};
 
 const INVITE_BASE: &str = "https://discord.gg";
@@ -59,6 +61,35 @@ impl PartialInviteChannel {
     #[must_use]
     pub fn created_at(&self) -> SystemTime {
         self.id.created_at()
+    }
+
+    /// Decodes partial invite channel data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "channel")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            channel_type: cast::required_enum(
+                object,
+                path,
+                "type",
+                "a channel type",
+                ChannelType::from_value,
+            )?,
+        })
     }
 }
 
@@ -228,6 +259,61 @@ impl PartialInviteGuild {
     #[must_use]
     pub fn splash_url(&self) -> Option<&str> {
         self.splash.as_ref().map(Asset::url)
+    }
+
+    /// Decodes partial invite guild data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "guild")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let id = cast::required_snowflake(object, path, "id")?;
+        Ok(Self {
+            id,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            features: cast::optional_string_array(object, path, "features")?.unwrap_or_default(),
+            icon: cast::optional_string(object, path, "icon")?
+                .map(|hash| Asset::from_guild_icon(id, hash)),
+            banner: cast::optional_string(object, path, "banner")?
+                .map(|hash| Asset::from_guild_image(id, hash, "banners")),
+            splash: cast::optional_string(object, path, "splash")?
+                .map(|hash| Asset::from_guild_image(id, hash, "splashes")),
+            verification_level: cast::optional_enum(
+                object,
+                path,
+                "verification_level",
+                "a verification level",
+                VerificationLevel::from_value,
+            )?
+            .unwrap_or_default(),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            vanity_url_code: cast::optional_string(object, path, "vanity_url_code")?
+                .map(str::to_owned),
+            nsfw_level: cast::optional_enum(
+                object,
+                path,
+                "nsfw_level",
+                "an NSFW level",
+                NsfwLevel::from_value,
+            )?
+            .unwrap_or_default(),
+            premium_subscription_count: cast::optional_u64(
+                object,
+                path,
+                "premium_subscription_count",
+            )?
+            .unwrap_or(0),
+        })
     }
 }
 
@@ -734,6 +820,108 @@ impl Invite {
     pub fn is_expired_at(&self, now: SystemTime) -> bool {
         self.expires_at.is_some_and(|expires_at| now >= expires_at)
     }
+
+    /// Decodes an invite from a Discord invite object.
+    ///
+    /// Guild and channel data is decoded as partial data, since invite
+    /// payloads do not include full guild or channel objects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "invite")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+
+        let guild_path = cast::field_path(path, "guild");
+        let guild = cast::optional_object(object, path, "guild")?
+            .map(|guild| PartialInviteGuild::from_object_at(guild, &guild_path))
+            .transpose()?
+            .map(InviteGuild::from);
+        let guild_id = guild.as_ref().map(InviteGuild::id).unwrap_or_default();
+
+        let channel_path = cast::field_path(path, "channel");
+        let channel = cast::optional_object(object, path, "channel")?
+            .map(|channel| PartialInviteChannel::from_object_at(channel, &channel_path))
+            .transpose()?
+            .map(InviteChannel::from);
+
+        let inviter_path = cast::field_path(path, "inviter");
+        let inviter = cast::optional_object(object, path, "inviter")?
+            .map(|user| User::from_object_at(user, &inviter_path))
+            .transpose()?;
+
+        let target_user_path = cast::field_path(path, "target_user");
+        let target_user = cast::optional_object(object, path, "target_user")?
+            .map(|user| User::from_object_at(user, &target_user_path))
+            .transpose()?;
+
+        let target_application_path = cast::field_path(path, "target_application");
+        let target_application = cast::optional_object(object, path, "target_application")?
+            .map(|application| {
+                PartialApplication::from_object_at(application, &target_application_path)
+            })
+            .transpose()?;
+
+        let scheduled_event_path = cast::field_path(path, "scheduled_event");
+        let scheduled_event = cast::optional_object(object, path, "scheduled_event")?
+            .map(|event| {
+                GuildScheduledEvent::from_object_at(event, &scheduled_event_path, guild_id)
+            })
+            .transpose()?
+            .map(Box::new);
+        let scheduled_event_id = cast::optional_snowflake(object, path, "scheduled_event_id")?
+            .or_else(|| scheduled_event.as_ref().map(|event| event.id));
+
+        Ok(Self {
+            code: cast::required_string(object, path, "code")?.to_owned(),
+            kind: cast::optional_enum(
+                object,
+                path,
+                "type",
+                "an invite type",
+                InviteType::from_value,
+            )?
+            .unwrap_or_default(),
+            guild,
+            channel,
+            inviter,
+            target_type: cast::optional_enum(
+                object,
+                path,
+                "target_type",
+                "an invite target",
+                InviteTarget::from_value,
+            )?
+            .unwrap_or_default(),
+            target_user,
+            target_application,
+            scheduled_event_id,
+            scheduled_event,
+            approximate_member_count: cast::optional_u64(object, path, "approximate_member_count")?,
+            approximate_presence_count: cast::optional_u64(
+                object,
+                path,
+                "approximate_presence_count",
+            )?,
+            uses: cast::optional_u64(object, path, "uses")?,
+            max_uses: cast::optional_u64(object, path, "max_uses")?,
+            max_age: cast::optional_u64(object, path, "max_age")?,
+            temporary: cast::optional(object, path, "temporary")
+                .map(|(value, path)| cast::boolean(value, &path))
+                .transpose()?,
+            revoked: cast::optional(object, path, "revoked")
+                .map(|(value, path)| cast::boolean(value, &path))
+                .transpose()?,
+            created_at: cast::optional_timestamp(object, path, "created_at")?,
+            expires_at: cast::optional_timestamp(object, path, "expires_at")?,
+            flags: InviteFlags::from_bits(cast::optional_u64(object, path, "flags")?.unwrap_or(0)),
+        })
+    }
 }
 
 impl fmt::Display for Invite {
@@ -761,6 +949,7 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use abc::{Asset, HasId, Snowflake};
+    use data::json;
     use enums::{ChannelType, InviteFlags, InviteTarget, InviteType, NsfwLevel, VerificationLevel};
 
     use super::{Invite, InviteChannel, InviteGuild, PartialInviteChannel, PartialInviteGuild};
@@ -947,5 +1136,190 @@ mod tests {
 
         assert_eq!(Invite::new("abc"), invite);
         assert_ne!(Invite::new("other"), invite);
+    }
+
+    #[test]
+    fn decodes_invites() {
+        let value = json::from_str(
+            r#"{
+                "code": "abc",
+                "type": 0,
+                "guild": {
+                    "id": "20",
+                    "name": "Guild",
+                    "features": ["COMMUNITY"],
+                    "icon": "icon",
+                    "banner": "banner",
+                    "splash": "splash",
+                    "verification_level": 3,
+                    "description": "A guild",
+                    "vanity_url_code": "vanity",
+                    "nsfw_level": 3,
+                    "premium_subscription_count": 4
+                },
+                "channel": {"id": "10", "name": "general", "type": 0},
+                "inviter": {"id": "1", "username": "winter"},
+                "target_type": 2,
+                "target_user": {"id": "2", "username": "target"},
+                "target_application": {"id": "3", "name": "Game"},
+                "scheduled_event_id": "40",
+                "scheduled_event": {
+                    "id": "40",
+                    "guild_id": "20",
+                    "channel_id": "10",
+                    "name": "Event",
+                    "entity_type": 2,
+                    "scheduled_start_time": "2021-08-01T12:34:56Z",
+                    "privacy_level": 2,
+                    "status": 1
+                },
+                "approximate_member_count": 100,
+                "approximate_presence_count": 50,
+                "uses": 5,
+                "max_uses": 10,
+                "max_age": 3600,
+                "temporary": true,
+                "revoked": false,
+                "created_at": "2021-07-01T00:00:00Z",
+                "expires_at": "2021-08-02T00:00:00Z",
+                "flags": 1
+            }"#,
+        )
+        .unwrap();
+
+        let invite = Invite::from_value(&value).unwrap();
+        assert_eq!(invite.code, "abc");
+        assert_eq!(invite.kind, InviteType::Guild);
+        assert!(invite.is_guild());
+        assert_eq!(invite.guild_id(), Some(Snowflake::new(20)));
+        assert_eq!(invite.channel_id(), Some(Snowflake::new(10)));
+
+        let guild = invite.guild.as_ref().unwrap();
+        assert!(guild.is_partial());
+        let partial = guild.as_partial().unwrap();
+        assert_eq!(partial.name, "Guild");
+        assert_eq!(partial.features, ["COMMUNITY"]);
+        assert_eq!(
+            partial.icon,
+            Some(Asset::from_guild_icon(Snowflake::new(20), "icon"))
+        );
+        assert_eq!(
+            partial.banner,
+            Some(Asset::from_guild_image(
+                Snowflake::new(20),
+                "banner",
+                "banners"
+            ))
+        );
+        assert_eq!(
+            partial.splash,
+            Some(Asset::from_guild_image(
+                Snowflake::new(20),
+                "splash",
+                "splashes"
+            ))
+        );
+        assert_eq!(partial.verification_level, VerificationLevel::High);
+        assert_eq!(partial.description.as_deref(), Some("A guild"));
+        assert_eq!(partial.vanity_url_code.as_deref(), Some("vanity"));
+        assert_eq!(partial.nsfw_level, NsfwLevel::AgeRestricted);
+        assert_eq!(partial.premium_subscription_count, 4);
+
+        let channel = invite.channel.as_ref().unwrap();
+        assert!(channel.is_partial());
+        assert_eq!(channel.name(), "general");
+        assert_eq!(channel.channel_type(), ChannelType::Text);
+
+        assert_eq!(
+            invite.inviter.as_ref().map(|user| user.name.as_str()),
+            Some("winter")
+        );
+        assert_eq!(invite.target_type, InviteTarget::EmbeddedApplication);
+        assert_eq!(
+            invite.target_user.as_ref().map(|user| user.id),
+            Some(Snowflake::new(2))
+        );
+        assert_eq!(
+            invite
+                .target_application
+                .as_ref()
+                .map(|application| application.name.as_str()),
+            Some("Game")
+        );
+        assert_eq!(invite.scheduled_event_id, Some(Snowflake::new(40)));
+        assert_eq!(
+            invite
+                .scheduled_event
+                .as_ref()
+                .map(|event| event.name.as_str()),
+            Some("Event")
+        );
+        assert_eq!(invite.approximate_member_count, Some(100));
+        assert_eq!(invite.approximate_presence_count, Some(50));
+        assert_eq!(invite.uses, Some(5));
+        assert_eq!(invite.max_uses, Some(10));
+        assert_eq!(invite.max_age, Some(3600));
+        assert_eq!(invite.temporary, Some(true));
+        assert_eq!(invite.revoked, Some(false));
+        assert_eq!(
+            invite.created_at,
+            Some(SystemTime::UNIX_EPOCH + Duration::new(1_625_097_600, 0))
+        );
+        assert_eq!(
+            invite.expires_at,
+            Some(SystemTime::UNIX_EPOCH + Duration::new(1_627_862_400, 0))
+        );
+        assert_eq!(invite.flags, InviteFlags::GUEST);
+        assert_eq!(invite.url(), "https://discord.gg/abc?event=40");
+
+        let minimal =
+            Invite::from_value(&json::from_str(r#"{"code":"minimal"}"#).unwrap()).unwrap();
+        assert_eq!(minimal.kind, InviteType::Guild);
+        assert_eq!(minimal.target_type, InviteTarget::Unknown);
+        assert!(minimal.guild.is_none());
+        assert!(minimal.channel.is_none());
+        assert!(minimal.inviter.is_none());
+        assert!(minimal.scheduled_event.is_none());
+        assert!(minimal.temporary.is_none());
+        assert!(minimal.revoked.is_none());
+        assert!(minimal.flags.is_empty());
+
+        let group = Invite::from_value(
+            &json::from_str(
+                r#"{
+                    "code": "group",
+                    "type": 1,
+                    "channel": {"id": "10", "name": "group", "type": 3}
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(group.is_group_dm());
+        assert_eq!(
+            group.channel.as_ref().map(InviteChannel::channel_type),
+            Some(ChannelType::Group)
+        );
+
+        let missing_code =
+            Invite::from_value(&json::from_str(r#"{"type":0}"#).unwrap()).unwrap_err();
+        assert_eq!(missing_code.to_string(), "missing field `invite.code`");
+
+        let bad_channel = Invite::from_value(
+            &json::from_str(r#"{"code":"abc","channel":{"id":"10","type":0}}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_channel.to_string(),
+            "missing field `invite.channel.name`"
+        );
+
+        let bad_flags =
+            Invite::from_value(&json::from_str(r#"{"code":"abc","flags":"nope"}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(
+            bad_flags.to_string(),
+            "field `invite.flags` must be a non-negative integer"
+        );
     }
 }

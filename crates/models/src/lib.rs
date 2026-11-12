@@ -13,6 +13,8 @@
 //! reactions, stickers, references and interaction metadata.
 //! Interaction payloads decode their command options, resolved objects, message
 //! components and modal submissions according to the interaction type.
+//! Invite, application and webhook payloads decode their partial guild,
+//! channel, application and source models.
 
 #![forbid(unsafe_code)]
 

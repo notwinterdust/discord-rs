@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, HasId, Snowflake};
-use data::Value;
+use data::{Object, Value};
 use enums::{GuildScheduledEventEntityType, GuildScheduledEventStatus, PrivacyLevel};
 
 use crate::cast::{self, CastError};
@@ -113,6 +113,14 @@ impl GuildScheduledEvent {
         guild_id: Snowflake,
     ) -> Result<Self, CastError> {
         let object = cast::object(value, path)?;
+        Self::from_object_at(object, path, guild_id)
+    }
+
+    pub(crate) fn from_object_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
         let id = cast::required_snowflake(object, path, "id")?;
         let guild_id = cast::optional_snowflake(object, path, "guild_id")?.unwrap_or(guild_id);
 

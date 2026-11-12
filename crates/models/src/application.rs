@@ -8,6 +8,9 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, HasId, Snowflake};
+use data::{Object, Value};
+
+use crate::cast::{self, CastError};
 
 /// The partial application data attached to an invite target.
 ///
@@ -164,6 +167,61 @@ impl PartialApplication {
     pub fn cover_image_url(&self) -> Option<&str> {
         self.cover_image.as_ref().map(Asset::url)
     }
+
+    /// Decodes partial application data from a Discord application object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "application")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let id = cast::required_snowflake(object, path, "id")?;
+        Ok(Self {
+            id,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            description: cast::optional_string(object, path, "description")?
+                .unwrap_or_default()
+                .to_owned(),
+            icon: cast::optional_string(object, path, "icon")?
+                .map(|hash| Asset::from_application_icon(id, hash)),
+            cover_image: cast::optional_string(object, path, "cover_image")?
+                .map(|hash| Asset::from_application_cover_image(id, hash)),
+            rpc_origins: cast::optional_string_array(object, path, "rpc_origins")?
+                .unwrap_or_default(),
+            verify_key: cast::optional_string(object, path, "verify_key")?
+                .unwrap_or_default()
+                .to_owned(),
+            terms_of_service_url: cast::optional_string(object, path, "terms_of_service_url")?
+                .map(str::to_owned),
+            privacy_policy_url: cast::optional_string(object, path, "privacy_policy_url")?
+                .map(str::to_owned),
+            approximate_guild_count: cast::optional_u64(object, path, "approximate_guild_count")?
+                .unwrap_or(0),
+            redirect_uris: cast::optional_string_array(object, path, "redirect_uris")?
+                .unwrap_or_default(),
+            interactions_endpoint_url: cast::optional_string(
+                object,
+                path,
+                "interactions_endpoint_url",
+            )?
+            .map(str::to_owned),
+            role_connections_verification_url: cast::optional_string(
+                object,
+                path,
+                "role_connections_verification_url",
+            )?
+            .map(str::to_owned),
+        })
+    }
 }
 
 impl fmt::Display for PartialApplication {
@@ -195,6 +253,7 @@ impl HasId for PartialApplication {
 #[cfg(test)]
 mod tests {
     use abc::{Asset, HasId, Snowflake};
+    use data::json;
 
     use super::PartialApplication;
 
@@ -254,5 +313,90 @@ mod tests {
 
         assert_eq!(a, b);
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn decodes_partial_applications() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "name": "Game",
+                "description": "A rich presence application",
+                "icon": "icon_hash",
+                "cover_image": "cover_hash",
+                "rpc_origins": ["https://rpc.example"],
+                "verify_key": "verify",
+                "terms_of_service_url": "https://example.com/tos",
+                "privacy_policy_url": "https://example.com/privacy",
+                "approximate_guild_count": 5,
+                "redirect_uris": ["https://example.com/callback"],
+                "interactions_endpoint_url": "https://example.com/interactions",
+                "role_connections_verification_url": "https://example.com/verify"
+            }"#,
+        )
+        .unwrap();
+
+        let application = PartialApplication::from_value(&value).unwrap();
+        assert_eq!(application.id, Snowflake::new(10));
+        assert_eq!(application.name, "Game");
+        assert_eq!(application.description, "A rich presence application");
+        assert_eq!(
+            application.icon,
+            Some(Asset::from_application_icon(
+                Snowflake::new(10),
+                "icon_hash"
+            ))
+        );
+        assert_eq!(
+            application.cover_image,
+            Some(Asset::from_application_cover_image(
+                Snowflake::new(10),
+                "cover_hash"
+            ))
+        );
+        assert_eq!(application.rpc_origins, ["https://rpc.example"]);
+        assert_eq!(application.verify_key, "verify");
+        assert_eq!(
+            application.terms_of_service_url.as_deref(),
+            Some("https://example.com/tos")
+        );
+        assert_eq!(
+            application.privacy_policy_url.as_deref(),
+            Some("https://example.com/privacy")
+        );
+        assert_eq!(application.approximate_guild_count, 5);
+        assert_eq!(application.redirect_uris, ["https://example.com/callback"]);
+        assert_eq!(
+            application.interactions_endpoint_url.as_deref(),
+            Some("https://example.com/interactions")
+        );
+        assert_eq!(
+            application.role_connections_verification_url.as_deref(),
+            Some("https://example.com/verify")
+        );
+
+        let minimal =
+            PartialApplication::from_value(&json::from_str(r#"{"id":"11","name":"Bot"}"#).unwrap())
+                .unwrap();
+        assert!(minimal.description.is_empty());
+        assert!(minimal.icon.is_none());
+        assert!(minimal.cover_image.is_none());
+        assert!(minimal.rpc_origins.is_empty());
+        assert!(minimal.verify_key.is_empty());
+        assert_eq!(minimal.approximate_guild_count, 0);
+        assert!(minimal.redirect_uris.is_empty());
+
+        let missing_name =
+            PartialApplication::from_value(&json::from_str(r#"{"id":"11"}"#).unwrap()).unwrap_err();
+        assert_eq!(missing_name.to_string(), "missing field `application.name`");
+
+        let bad_redirects = PartialApplication::from_value(
+            &json::from_str(r#"{"id":"11","name":"Bot","redirect_uris":[1]}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_redirects.to_string(),
+            "field `application.redirect_uris[0]` must be a string"
+        );
     }
 }

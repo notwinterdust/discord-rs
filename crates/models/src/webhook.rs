@@ -11,8 +11,10 @@ use std::ops::Deref;
 use std::time::SystemTime;
 
 use abc::{Asset, HasId, Snowflake};
+use data::{Object, Value};
 use enums::WebhookType;
 
+use crate::cast::{self, CastError};
 use crate::{Message, User};
 
 const WEBHOOK_API_BASE: &str = "https://discord.com/api/webhooks";
@@ -42,6 +44,31 @@ impl PartialWebhookChannel {
     #[must_use]
     pub fn mention(&self) -> String {
         format!("<#{}>", self.id)
+    }
+
+    /// Decodes partial webhook channel data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "source_channel")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+        })
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+        })
     }
 }
 
@@ -113,6 +140,37 @@ impl PartialWebhookGuild {
     #[must_use]
     pub fn icon_url(&self) -> Option<&str> {
         self.icon.as_ref().map(Asset::url)
+    }
+
+    /// Decodes partial webhook guild data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "source_guild")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        Ok(Self {
+            id,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            icon: cast::optional_string(object, path, "icon")?
+                .map(|hash| Asset::from_guild_icon(id, hash)),
+        })
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let id = cast::required_snowflake(object, path, "id")?;
+        Ok(Self {
+            id,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            icon: cast::optional_string(object, path, "icon")?
+                .map(|hash| Asset::from_guild_icon(id, hash)),
+        })
     }
 }
 
@@ -354,6 +412,60 @@ impl Webhook {
     pub fn display_avatar(&self) -> Asset {
         self.avatar.clone().unwrap_or_else(|| self.default_avatar())
     }
+
+    /// Decodes a webhook from a Discord webhook object.
+    ///
+    /// Partial webhooks may omit `channel_id`, `guild_id` and the source guild
+    /// and channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "webhook")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+
+        let source_guild_path = cast::field_path(path, "source_guild");
+        let source_guild = cast::optional_object(object, path, "source_guild")?
+            .map(|guild| PartialWebhookGuild::from_object_at(guild, &source_guild_path))
+            .transpose()?;
+        let source_channel_path = cast::field_path(path, "source_channel");
+        let source_channel = cast::optional_object(object, path, "source_channel")?
+            .map(|channel| PartialWebhookChannel::from_object_at(channel, &source_channel_path))
+            .transpose()?;
+
+        let user_path = cast::field_path(path, "user");
+        let user = cast::optional_object(object, path, "user")?
+            .map(|user| User::from_object_at(user, &user_path))
+            .transpose()?;
+
+        Ok(Self {
+            id,
+            kind: cast::required_enum(
+                object,
+                path,
+                "type",
+                "a webhook type",
+                WebhookType::from_value,
+            )?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            channel_id: cast::optional_snowflake(object, path, "channel_id")?,
+            token: cast::optional_string(object, path, "token")?.map(str::to_owned),
+            auth_token: None,
+            user,
+            name: cast::optional_string(object, path, "name")?.map(str::to_owned),
+            avatar: cast::optional_string(object, path, "avatar")?
+                .map(|hash| Asset::from_avatar(id, hash)),
+            application_id: cast::optional_snowflake(object, path, "application_id")?,
+            source_guild,
+            source_channel,
+        })
+    }
 }
 
 impl PartialEq for Webhook {
@@ -396,6 +508,26 @@ impl WebhookMessage {
             message,
             thread_id: None,
         }
+    }
+
+    /// Decodes a webhook message from a Discord message object.
+    ///
+    /// The optional `thread_id` on the payload is preserved.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the message payload is malformed.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "webhook_message")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let thread_id = cast::optional_snowflake(object, path, "thread_id")?;
+        Ok(Self {
+            message: Message::from_value_at(value, path)?,
+            thread_id,
+        })
     }
 
     /// Sets the thread the message was sent in.
@@ -461,6 +593,7 @@ impl HasId for WebhookMessage {
 #[cfg(test)]
 mod tests {
     use abc::{Asset, HasId, Snowflake};
+    use data::json;
     use enums::WebhookType;
 
     use super::{PartialWebhookChannel, PartialWebhookGuild, Webhook, WebhookMessage};
@@ -591,5 +724,140 @@ mod tests {
         let from_message: WebhookMessage = message.clone().into();
         assert_eq!(from_message, WebhookMessage::new(message.clone()));
         assert_eq!(from_message.into_message(), message);
+    }
+
+    #[test]
+    fn decodes_webhooks() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "type": 2,
+                "guild_id": "20",
+                "channel_id": "30",
+                "token": "tok",
+                "user": {"id": "1", "username": "winter"},
+                "name": "Follower",
+                "avatar": "avatar_hash",
+                "application_id": "40",
+                "source_guild": {"id": "50", "name": "Source", "icon": "icon_hash"},
+                "source_channel": {"id": "60", "name": "announcements"}
+            }"#,
+        )
+        .unwrap();
+
+        let webhook = Webhook::from_value(&value).unwrap();
+        assert_eq!(webhook.id, Snowflake::new(10));
+        assert_eq!(webhook.kind, WebhookType::ChannelFollower);
+        assert!(webhook.is_channel_follower());
+        assert_eq!(webhook.guild_id, Some(Snowflake::new(20)));
+        assert_eq!(webhook.channel_id, Some(Snowflake::new(30)));
+        assert_eq!(webhook.token.as_deref(), Some("tok"));
+        assert_eq!(
+            webhook.user.as_ref().map(|user| user.id),
+            Some(Snowflake::new(1))
+        );
+        assert_eq!(webhook.name.as_deref(), Some("Follower"));
+        assert_eq!(
+            webhook.avatar,
+            Some(Asset::from_avatar(Snowflake::new(10), "avatar_hash"))
+        );
+        assert_eq!(webhook.application_id, Some(Snowflake::new(40)));
+        assert!(webhook.auth_token.is_none());
+
+        let source_guild = webhook.source_guild.as_ref().unwrap();
+        assert_eq!(source_guild.id, Snowflake::new(50));
+        assert_eq!(source_guild.name, "Source");
+        assert_eq!(
+            source_guild.icon,
+            Some(Asset::from_guild_icon(Snowflake::new(50), "icon_hash"))
+        );
+        let source_channel = webhook.source_channel.as_ref().unwrap();
+        assert_eq!(source_channel.id, Snowflake::new(60));
+        assert_eq!(source_channel.name, "announcements");
+
+        let minimal =
+            Webhook::from_value(&json::from_str(r#"{"id":"11","type":1}"#).unwrap()).unwrap();
+        assert_eq!(minimal.kind, WebhookType::Incoming);
+        assert!(minimal.is_partial());
+        assert!(minimal.channel_id.is_none());
+        assert!(minimal.token.is_none());
+        assert!(minimal.user.is_none());
+        assert!(minimal.name.is_none());
+        assert!(minimal.avatar.is_none());
+        assert!(minimal.source_guild.is_none());
+        assert!(minimal.source_channel.is_none());
+
+        let missing_type =
+            Webhook::from_value(&json::from_str(r#"{"id":"11"}"#).unwrap()).unwrap_err();
+        assert_eq!(missing_type.to_string(), "missing field `webhook.type`");
+
+        let bad_source = Webhook::from_value(
+            &json::from_str(r#"{"id":"11","type":2,"source_channel":{"id":"60"}}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_source.to_string(),
+            "missing field `webhook.source_channel.name`"
+        );
+
+        let bad_user = Webhook::from_value(
+            &json::from_str(r#"{"id":"11","type":1,"user":{"username":"winter"}}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(bad_user.to_string(), "missing field `webhook.user.id`");
+    }
+
+    #[test]
+    fn decodes_webhook_messages() {
+        let value = json::from_str(
+            r#"{
+                "id": "1",
+                "channel_id": "2",
+                "author": {"id": "3", "username": "author"},
+                "timestamp": "2021-08-01T12:34:56Z",
+                "content": "hello",
+                "webhook_id": "4",
+                "thread_id": "5"
+            }"#,
+        )
+        .unwrap();
+
+        let message = WebhookMessage::from_value(&value).unwrap();
+        assert_eq!(message.id, Snowflake::new(1));
+        assert_eq!(message.content, "hello");
+        assert_eq!(message.thread_id, Some(Snowflake::new(5)));
+        assert_eq!(message.webhook_id(), Some(Snowflake::new(4)));
+
+        let no_thread = WebhookMessage::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "1",
+                    "channel_id": "2",
+                    "author": {"id": "3", "username": "author"},
+                    "timestamp": "2021-08-01T12:34:56Z"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(no_thread.thread_id.is_none());
+
+        let bad_thread = WebhookMessage::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "1",
+                    "channel_id": "2",
+                    "author": {"id": "3", "username": "author"},
+                    "timestamp": "2021-08-01T12:34:56Z",
+                    "thread_id": "nope"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_thread.to_string(),
+            "field `webhook_message.thread_id` must be a snowflake"
+        );
     }
 }
