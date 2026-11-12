@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>discord-rust | Pure Standard Library Discord Framework</title>
+  <meta name="description" content="A feature-rich, high-performance, standard-library-only Discord API and Gateway library for Rust with strict `#![forbid(unsafe_code)]`.">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/code-theme.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ======================================================================= -->
+  <!-- Top Navigation Header                                                   -->
+  <!-- ======================================================================= -->
+  <header class="site-header">
+    <div class="header-left">
+      <a href="#" class="brand" onclick="showLanding(); return false;">
+        <div class="brand-icon">🦀</div>
+        <span>discord-rust</span>
+        <span class="version-badge">v0.1.0</span>
+      </a>
+      <nav class="nav-links">
+        <a id="nav-home" class="nav-link active" onclick="showLanding(); return false;">Home</a>
+        <a id="nav-quickstart" class="nav-link" onclick="showWiki('quickstart'); return false;">Quickstart</a>
+        <a id="nav-wiki" class="nav-link" onclick="showWiki('intro'); return false;">Wiki & Docs</a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <a href="https://github.com/notwinterdust/discord-rust" target="_blank" rel="noopener noreferrer" class="github-btn">
+        <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- ======================================================================= -->
+  <!-- View 1: Main Screen (Landing Page)                                      -->
+  <!-- ======================================================================= -->
+  <main id="landing-view">
+    <section class="hero">
+      <div class="hero-pill">
+        <span>✨ v0.1.0 Released — Pure Standard Library</span>
+      </div>
+      <h1>The Discord Framework built with <span>Pure Rust Std</span></h1>
+      <p>
+        Zero async runtimes. Zero third-party bloat. Strict <code>#![forbid(unsafe_code)]</code>.
+        High-throughput gateway sharding and type-safe REST clients implemented using standard threads, atomics, and channels.
+      </p>
+
+      <div class="hero-actions">
+        <button class="btn btn-primary" onclick="showWiki('quickstart');">Get Started in 5 Mins →</button>
+        <button class="btn btn-secondary" onclick="showWiki('intro');">Browse Wiki & Reference</button>
+      </div>
+
+      <div class="quick-install">
+        <span>$ cargo add discord-rust</span>
+        <button id="copy-install-btn" class="copy-mini-btn" title="Copy command">📋</button>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section">
+      <div class="features-header">
+        <h2>Designed from First Principles</h2>
+        <p style="color: var(--text-muted);">Built for predictability, minimal binary size, and zero unexpected dependencies.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Standard Library Only</h3>
+          <p>
+            No complex async/await state machines or bloated tokio dependency trees.
+            Leverages native OS threads, lockless atomics, and <code>std::sync::mpsc</code> channels.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>Strictly Unsafe-Free</h3>
+          <p>
+            Every single crate in the workspace explicitly enforces <code>#![forbid(unsafe_code)]</code>.
+            Guaranteed memory safety across all models, parsers, and runtimes.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔌</div>
+          <h3>Pluggable Transports</h3>
+          <p>
+            Gateway and REST connections are decoupled behind traits. Seamlessly plug in native TLS, tungstenite,
+            or mock test harnesses without changing application logic.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Auto Sharding Runtime</h3>
+          <p>
+            Built-in multi-shard orchestrator queries Discord's recommendation endpoint and coordinates
+            concurrent workers across CPU cores with automated heartbeat management.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🗄️</div>
+          <h3>Thread-Safe LRU Cache</h3>
+          <p>
+            Per-type caching for Guilds, Channels, Members, Users, Roles, and Messages.
+            Automatically populates and invalidates state from incoming Gateway events.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📦</div>
+          <h3>Granular Modularity</h3>
+          <p>
+            14 focused sub-crates (models, clients, voice, webhook, app commands, etc.) allow applications
+            to pull only the components they need, or use the unified <code>discord-rust</code> facade.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======================================================================= -->
+  <!-- View 2: Wiki & Documentation Reader                                     -->
+  <!-- ======================================================================= -->
+  <div id="wiki-view">
+    <div class="wiki-container">
+      
+      <!-- Left Sidebar: Topic Catalog & Search -->
+      <aside class="wiki-sidebar">
+        <div class="sidebar-search">
+          <input type="text" id="sidebar-search-input" placeholder="Search documentation...">
+        </div>
+        <div id="sidebar-nav-container">
+          <!-- Dynamically populated by js/app.js -->
+        </div>
+      </aside>
+
+      <!-- Center Pane: Rendered Markdown -->
+      <article class="wiki-content">
+        <div class="doc-wrapper markdown-body" id="markdown-render">
+          <!-- Dynamically loaded from content/*.md -->
+        </div>
+      </article>
+
+      <!-- Right Rail: Table of Contents -->
+      <aside class="wiki-toc">
+        <div class="toc-title">On this page</div>
+        <ul id="toc-nav" class="toc-nav">
+          <!-- Dynamically generated from document headings -->
+        </ul>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- Footer                                                                  -->
+  <!-- ======================================================================= -->
+  <footer class="site-footer">
+    <p>
+      discord-rust is released under the <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener noreferrer">MIT License</a>.
+      Maintained by <a href="https://github.com/notwinterdust" target="_blank" rel="noopener noreferrer">@notwinterdust</a>.
+    </p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/marked.min.js"></script>
+  <script src="js/highlight.min.js"></script>
+  <script src="js/rust.min.js"></script>
+  <script src="js/bash.min.js"></script>
+  <script src="js/json.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
