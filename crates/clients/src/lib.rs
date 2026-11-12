@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod api;
+pub mod cache;
 pub mod client;
 pub mod connection;
 pub mod events;
@@ -18,6 +19,7 @@ pub mod http;
 pub mod shard;
 
 pub use api::DiscordApi;
+pub use cache::Cache;
 pub use client::{Client, ClientState, HttpClient, RetryPolicy, TcpTransport, Transport};
 pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
