@@ -4,6 +4,66 @@
 
 use std::collections::VecDeque;
 
+/// A voice RTP packet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VoicePacket {
+    /// RTP sequence number.
+    pub sequence: u16,
+    /// RTP timestamp.
+    pub timestamp: u32,
+    /// Encoded payload.
+    pub payload: Vec<u8>,
+}
+
+impl VoicePacket {
+    /// Creates a packet.
+    #[must_use]
+    pub fn new(sequence: u16, timestamp: u32, payload: impl Into<Vec<u8>>) -> Self {
+        Self {
+            sequence,
+            timestamp,
+            payload: payload.into(),
+        }
+    }
+}
+
+/// Voice heartbeat state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Heartbeat {
+    /// Last sent nonce.
+    pub nonce: u64,
+    /// Whether an acknowledgement is pending.
+    pub awaiting_ack: bool,
+}
+
+impl Heartbeat {
+    /// Creates an initial heartbeat.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            nonce: 0,
+            awaiting_ack: false,
+        }
+    }
+
+    /// Starts the next heartbeat.
+    pub fn send(&mut self) -> u64 {
+        self.nonce = self.nonce.wrapping_add(1);
+        self.awaiting_ack = true;
+        self.nonce
+    }
+
+    /// Acknowledges the current heartbeat.
+    pub fn acknowledge(&mut self, nonce: u64) -> bool {
+        if self.awaiting_ack && self.nonce == nonce {
+            self.awaiting_ack = false;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// A source of encoded audio frames.
 pub trait AudioSource {
     /// Returns the next frame, or `None` when playback is complete.
