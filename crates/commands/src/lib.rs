@@ -124,6 +124,35 @@ impl CommandRegistry {
         true
     }
 
+    /// Parses and dispatches a message only when a predicate accepts it.
+    pub fn dispatch_checked(
+        &mut self,
+        message: &str,
+        check: impl Fn(&Context) -> bool,
+    ) -> bool {
+        let Some(rest) = message.strip_prefix(&self.prefix) else {
+            return false;
+        };
+        let mut words = Self::tokenize(rest);
+        let Some(name) = words.next() else {
+            return false;
+        };
+        let context = Context {
+            name: name.clone(),
+            arguments: words.collect(),
+        };
+        if !check(&context) {
+            return false;
+        }
+        let Some(command) = self.commands.iter_mut().find(|command| {
+            command.name == name || command.aliases.iter().any(|alias| alias == &name)
+        }) else {
+            return false;
+        };
+        command.handler.call(&context);
+        true
+    }
+
     fn tokenize(input: &str) -> impl Iterator<Item = String> + '_ {
         let mut values = Vec::new();
         let mut current = String::new();
