@@ -116,6 +116,34 @@ impl AudioSource for BufferedSource {
     fn next_frame(&mut self) -> Option<Vec<u8>> {
         self.frames.pop_front()
     }
+
+    /// Applies a scalar volume to little-endian signed 16-bit PCM frames.
+    pub struct VolumeSource<S> {
+        source: S,
+        volume: f32,
+    }
+
+    impl<S> VolumeSource<S> {
+        /// Creates a volume-wrapped source.
+        #[must_use]
+        pub const fn new(source: S, volume: f32) -> Self {
+            Self { source, volume }
+        }
+    }
+
+    impl<S: AudioSource> AudioSource for VolumeSource<S> {
+        fn next_frame(&mut self) -> Option<Vec<u8>> {
+            let mut frame = self.source.next_frame()?;
+            for sample in frame.chunks_exact_mut(2) {
+                let value = i16::from_le_bytes([sample[0], sample[1]]);
+                let scaled = (f32::from(value) * self.volume)
+                    .round()
+                    .clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16;
+                sample.copy_from_slice(&scaled.to_le_bytes());
+            }
+            Some(frame)
+        }
+    }
 }
 
 /// A transport capable of sending voice frames.
