@@ -17,39 +17,6 @@ impl Shard {
         if count == 0 || id >= count {
             return Err("invalid shard assignment");
         }
-
-        /// Coordinates a fixed shard set.
-        #[derive(Clone, Debug)]
-        pub struct ShardManager {
-            shards: Vec<Shard>,
-            max_concurrency: u32,
-        }
-
-        impl ShardManager {
-            /// Creates a manager for `count` shards.
-            pub fn new(count: u32, max_concurrency: u32) -> Result<Self, &'static str> {
-                let mut shards = Vec::new();
-                for id in 0..count {
-                    shards.push(Shard::new(id, count)?);
-                }
-                Ok(Self {
-                    shards,
-                    max_concurrency,
-                })
-            }
-
-            /// Returns all shard assignments.
-            #[must_use]
-            pub fn shards(&self) -> &[Shard] {
-                &self.shards
-            }
-
-            /// Returns the identify delay for one shard.
-            #[must_use]
-            pub fn identify_delay(&self, shard: Shard) -> Duration {
-                shard.identify_delay(self.max_concurrency)
-            }
-        }
         Ok(Self { id, count })
     }
 
@@ -62,5 +29,38 @@ impl Shard {
             self.id % max_concurrency
         };
         Duration::from_secs(bucket as u64 * 5)
+    }
+}
+
+/// Coordinates a fixed shard set.
+#[derive(Clone, Debug)]
+pub struct ShardManager {
+    shards: Vec<Shard>,
+    max_concurrency: u32,
+}
+
+impl ShardManager {
+    /// Creates a manager for `count` shards.
+    pub fn new(count: u32, max_concurrency: u32) -> Result<Self, &'static str> {
+        let mut shards = Vec::new();
+        for id in 0..count {
+            shards.push(Shard::new(id, count)?);
+        }
+        Ok(Self {
+            shards,
+            max_concurrency,
+        })
+    }
+
+    /// Returns all shard assignments.
+    #[must_use]
+    pub fn shards(&self) -> &[Shard] {
+        &self.shards
+    }
+
+    /// Returns the identify delay for one shard.
+    #[must_use]
+    pub fn identify_delay(&self, shard: Shard) -> Duration {
+        shard.identify_delay(self.max_concurrency)
     }
 }
