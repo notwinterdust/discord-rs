@@ -1060,6 +1060,122 @@ impl StageInstanceEvent {
     }
 }
 
+/// The payload of a `THREAD_LIST_SYNC` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ThreadListSync {
+    /// The guild ID.
+    pub guild_id: Snowflake,
+    /// Parent channel IDs whose threads are being synced, if any.
+    pub channel_ids: Option<Vec<Snowflake>>,
+    /// Active threads in the given channels.
+    pub threads: Vec<GuildChannel>,
+    /// Thread members for the client in the synced threads.
+    pub members: Vec<crate::ThreadMember>,
+}
+
+impl ThreadListSync {
+    /// Decodes a `THREAD_LIST_SYNC` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "thread_list_sync")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let guild_id = cast::required_snowflake(object, path, "guild_id")?;
+
+        let channel_ids = cast::optional_array_of(object, path, "channel_ids", |v, p| {
+            cast::snowflake(v, p)
+        })?;
+
+        let threads = cast::optional_array_of(object, path, "threads", |v, _| channel(v))?
+            .unwrap_or_default();
+
+        let members = cast::optional_array_of(object, path, "members", |v, p| {
+            let tid = cast::optional_snowflake(cast::object(v, p)?, p, "id")?.unwrap_or_default();
+            crate::ThreadMember::from_value_at(v, p, tid)
+        })?
+        .unwrap_or_default();
+
+        Ok(Self {
+            guild_id,
+            channel_ids,
+            threads,
+            members,
+        })
+    }
+}
+
+/// The payload of a `THREAD_MEMBERS_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ThreadMembersUpdate {
+    /// The thread ID.
+    pub id: Snowflake,
+    /// The guild ID.
+    pub guild_id: Snowflake,
+    /// Approximate member count.
+    pub member_count: u32,
+    /// Users added to the thread.
+    pub added_members: Vec<crate::ThreadMember>,
+    /// IDs of users removed from the thread.
+    pub removed_member_ids: Vec<Snowflake>,
+}
+
+impl ThreadMembersUpdate {
+    /// Decodes a `THREAD_MEMBERS_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "thread_members_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        let guild_id = cast::required_snowflake(object, path, "guild_id")?;
+        let member_count = cast::optional_u32(object, path, "member_count")?.unwrap_or(0);
+
+        let added_members = cast::optional_array_of(object, path, "added_members", |v, p| {
+            crate::ThreadMember::from_value_at(v, p, id)
+        })?
+        .unwrap_or_default();
+
+        let removed_member_ids = cast::optional_array_of(object, path, "removed_member_ids", |v, p| {
+            cast::snowflake(v, p)
+        })?
+        .unwrap_or_default();
+
+        Ok(Self {
+            id,
+            guild_id,
+            member_count,
+            added_members,
+            removed_member_ids,
+        })
+    }
+}
+
+/// The payload of a `CHANNEL_PINS_UPDATE` event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ChannelPinsUpdate {
+    /// The guild ID, if any.
+    pub guild_id: Option<Snowflake>,
+    /// The channel ID whose pins were updated.
+    pub channel_id: Snowflake,
+}
+
+impl ChannelPinsUpdate {
+    /// Decodes a `CHANNEL_PINS_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "channel_pins_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            channel_id: cast::required_snowflake(object, path, "channel_id")?,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -1154,6 +1270,14 @@ pub enum Event {
     StageInstanceUpdate(StageInstanceEvent),
     /// A stage instance was deleted.
     StageInstanceDelete(StageInstanceEvent),
+    /// Active threads in a channel were synced.
+    ThreadListSync(ThreadListSync),
+    /// A thread member was updated.
+    ThreadMemberUpdate(crate::ThreadMember),
+    /// Members were added to or removed from a thread.
+    ThreadMembersUpdate(ThreadMembersUpdate),
+    /// Pinned messages in a channel were updated.
+    ChannelPinsUpdate(ChannelPinsUpdate),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -1304,6 +1428,15 @@ impl Event {
             "STAGE_INSTANCE_DELETE" => Ok(Self::StageInstanceDelete(
                 StageInstanceEvent::from_value(data)?,
             )),
+            "THREAD_LIST_SYNC" => Ok(Self::ThreadListSync(ThreadListSync::from_value(data)?)),
+            "THREAD_MEMBER_UPDATE" => {
+                let tid = cast::optional_snowflake(cast::object(data, "thread_member_update")?, "thread_member_update", "id")?.unwrap_or_default();
+                Ok(Self::ThreadMemberUpdate(crate::ThreadMember::from_value(data, tid)?))
+            }
+            "THREAD_MEMBERS_UPDATE" => {
+                Ok(Self::ThreadMembersUpdate(ThreadMembersUpdate::from_value(data)?))
+            }
+            "CHANNEL_PINS_UPDATE" => Ok(Self::ChannelPinsUpdate(ChannelPinsUpdate::from_value(data)?)),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -1384,6 +1517,10 @@ impl Event {
             Self::StageInstanceCreate(_) => "STAGE_INSTANCE_CREATE",
             Self::StageInstanceUpdate(_) => "STAGE_INSTANCE_UPDATE",
             Self::StageInstanceDelete(_) => "STAGE_INSTANCE_DELETE",
+            Self::ThreadListSync(_) => "THREAD_LIST_SYNC",
+            Self::ThreadMemberUpdate(_) => "THREAD_MEMBER_UPDATE",
+            Self::ThreadMembersUpdate(_) => "THREAD_MEMBERS_UPDATE",
+            Self::ChannelPinsUpdate(_) => "CHANNEL_PINS_UPDATE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
