@@ -770,6 +770,93 @@ impl SoundboardSoundEvent {
     }
 }
 
+/// An Auto Moderation rule payload.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoModRule {
+    /// The rule ID.
+    pub id: Snowflake,
+    /// The guild the rule belongs to.
+    pub guild_id: Snowflake,
+    /// The rule name.
+    pub name: String,
+    /// The creator ID.
+    pub creator_id: Snowflake,
+    /// The event type (e.g., 1 for message send).
+    pub event_type: u8,
+    /// The trigger type.
+    pub trigger_type: u8,
+    /// Whether the rule is enabled.
+    pub enabled: bool,
+}
+
+impl AutoModRule {
+    /// Decodes an AutoMod rule from a gateway payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "auto_moderation_rule")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            creator_id: cast::required_snowflake(object, path, "creator_id")?,
+            event_type: cast::required_u16(object, path, "event_type")? as u8,
+            trigger_type: cast::required_u16(object, path, "trigger_type")? as u8,
+            enabled: cast::optional_bool(object, path, "enabled", true)?,
+        })
+    }
+}
+
+/// The payload of an `AUTO_MODERATION_ACTION_EXECUTION` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoModActionExecution {
+    /// The guild ID.
+    pub guild_id: Snowflake,
+    /// The rule ID.
+    pub rule_id: Snowflake,
+    /// The rule trigger type.
+    pub rule_trigger_type: u8,
+    /// The user ID whose action triggered the rule.
+    pub user_id: Snowflake,
+    /// The channel ID, if any.
+    pub channel_id: Option<Snowflake>,
+    /// The message ID, if any.
+    pub message_id: Option<Snowflake>,
+    /// The alert system message ID, if any.
+    pub alert_system_message_id: Option<Snowflake>,
+    /// The user content that triggered the rule.
+    pub content: Option<String>,
+    /// The matched keyword.
+    pub matched_keyword: Option<String>,
+    /// The matched content.
+    pub matched_content: Option<String>,
+}
+
+impl AutoModActionExecution {
+    /// Decodes an `AUTO_MODERATION_ACTION_EXECUTION` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "auto_moderation_action_execution")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            rule_id: cast::required_snowflake(object, path, "rule_id")?,
+            rule_trigger_type: cast::required_u16(object, path, "rule_trigger_type")? as u8,
+            user_id: cast::required_snowflake(object, path, "user_id")?,
+            channel_id: cast::optional_snowflake(object, path, "channel_id")?,
+            message_id: cast::optional_snowflake(object, path, "message_id")?,
+            alert_system_message_id: cast::optional_snowflake(object, path, "alert_system_message_id")?,
+            content: cast::optional_string(object, path, "content")?.map(str::to_owned),
+            matched_keyword: cast::optional_string(object, path, "matched_keyword")?.map(str::to_owned),
+            matched_content: cast::optional_string(object, path, "matched_content")?.map(str::to_owned),
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -838,6 +925,14 @@ pub enum Event {
     GuildSoundboardSoundCreate(SoundboardSoundEvent),
     /// A soundboard sound was deleted.
     GuildSoundboardSoundDelete(SoundboardSoundEvent),
+    /// An AutoMod rule was created.
+    AutoModerationRuleCreate(AutoModRule),
+    /// An AutoMod rule was updated.
+    AutoModerationRuleUpdate(AutoModRule),
+    /// An AutoMod rule was deleted.
+    AutoModerationRuleDelete(AutoModRule),
+    /// An AutoMod action was executed.
+    AutoModerationActionExecution(AutoModActionExecution),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -957,6 +1052,18 @@ impl Event {
             "GUILD_SOUNDBOARD_SOUND_DELETE" => Ok(Self::GuildSoundboardSoundDelete(
                 SoundboardSoundEvent::from_value(data)?,
             )),
+            "AUTO_MODERATION_RULE_CREATE" => Ok(Self::AutoModerationRuleCreate(
+                AutoModRule::from_value(data)?,
+            )),
+            "AUTO_MODERATION_RULE_UPDATE" => Ok(Self::AutoModerationRuleUpdate(
+                AutoModRule::from_value(data)?,
+            )),
+            "AUTO_MODERATION_RULE_DELETE" => Ok(Self::AutoModerationRuleDelete(
+                AutoModRule::from_value(data)?,
+            )),
+            "AUTO_MODERATION_ACTION_EXECUTION" => Ok(Self::AutoModerationActionExecution(
+                AutoModActionExecution::from_value(data)?,
+            )),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -1024,6 +1131,10 @@ impl Event {
             Self::GuildStickersUpdate(_) => "GUILD_STICKERS_UPDATE",
             Self::GuildSoundboardSoundCreate(_) => "GUILD_SOUNDBOARD_SOUND_CREATE",
             Self::GuildSoundboardSoundDelete(_) => "GUILD_SOUNDBOARD_SOUND_DELETE",
+            Self::AutoModerationRuleCreate(_) => "AUTO_MODERATION_RULE_CREATE",
+            Self::AutoModerationRuleUpdate(_) => "AUTO_MODERATION_RULE_UPDATE",
+            Self::AutoModerationRuleDelete(_) => "AUTO_MODERATION_RULE_DELETE",
+            Self::AutoModerationActionExecution(_) => "AUTO_MODERATION_ACTION_EXECUTION",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
@@ -1746,6 +1857,54 @@ mod tests {
                 assert_eq!(sound.guild_id, Snowflake::new(100));
             }
             other => panic!("expected GuildSoundboardSoundDelete, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decodes_automod_events() {
+        let rule_raw = r#"{
+            "id": "100",
+            "guild_id": "200",
+            "name": "Block spam",
+            "creator_id": "300",
+            "event_type": 1,
+            "trigger_type": 1,
+            "enabled": true
+        }"#;
+
+        match event("AUTO_MODERATION_RULE_CREATE", rule_raw) {
+            Event::AutoModerationRuleCreate(rule) => {
+                assert_eq!(rule.id, Snowflake::new(100));
+                assert_eq!(rule.guild_id, Snowflake::new(200));
+                assert_eq!(rule.name, "Block spam");
+                assert_eq!(rule.event_type, 1);
+                assert!(rule.enabled);
+            }
+            other => panic!("expected AutoModerationRuleCreate, got {other:?}"),
+        }
+
+        match event("AUTO_MODERATION_RULE_DELETE", rule_raw) {
+            Event::AutoModerationRuleDelete(rule) => {
+                assert_eq!(rule.id, Snowflake::new(100));
+            }
+            other => panic!("expected AutoModerationRuleDelete, got {other:?}"),
+        }
+
+        let exec_raw = r#"{
+            "guild_id": "200",
+            "rule_id": "100",
+            "rule_trigger_type": 1,
+            "user_id": "300",
+            "content": "bad message"
+        }"#;
+
+        match event("AUTO_MODERATION_ACTION_EXECUTION", exec_raw) {
+            Event::AutoModerationActionExecution(exec) => {
+                assert_eq!(exec.guild_id, Snowflake::new(200));
+                assert_eq!(exec.rule_id, Snowflake::new(100));
+                assert_eq!(exec.content.as_deref(), Some("bad message"));
+            }
+            other => panic!("expected AutoModerationActionExecution, got {other:?}"),
         }
     }
 
