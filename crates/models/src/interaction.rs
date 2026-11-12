@@ -12,12 +12,14 @@ use std::ops::Deref;
 use std::time::SystemTime;
 
 use abc::{HasId, Snowflake};
+use data::{Object, Value};
 use enums::{
     ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
     ComponentType, InteractionContextType, InteractionResponseType, InteractionType, MessageFlags,
     Permissions,
 };
 
+use crate::cast::{self, CastError};
 use crate::{
     ActionRow, Attachment, Embed, GuildChannel, Member, Message, MessageAuthor, Poll, Role, User,
 };
@@ -1087,6 +1089,39 @@ impl MessageInteraction {
         }
     }
 
+    /// Decodes a message interaction from a Discord message interaction
+    /// object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "interaction")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let user_path = cast::field_path(path, "user");
+        let user = User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            kind: cast::required_enum(
+                object,
+                path,
+                "type",
+                "an interaction type",
+                InteractionType::from_value,
+            )?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            user: MessageAuthor::from_user(user),
+        })
+    }
+
     /// Returns the interaction's creation time.
     #[must_use]
     pub fn created_at(&self) -> SystemTime {
@@ -1154,6 +1189,78 @@ impl MessageInteractionMetadata {
             target_user: None,
             target_message_id: None,
         }
+    }
+
+    /// Decodes message interaction metadata from a Discord object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "interaction_metadata")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let user_path = cast::field_path(path, "user");
+        let user = User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?;
+
+        let mut authorizing_integration_owners = HashMap::new();
+        if let Some(owners) = cast::optional_object(object, path, "authorizing_integration_owners")?
+        {
+            let owners_path = cast::field_path(path, "authorizing_integration_owners");
+            for (kind, value) in owners.iter() {
+                let Ok(kind) = kind.parse::<u8>() else {
+                    continue;
+                };
+                let Some(kind) = ApplicationIntegrationType::from_value(kind) else {
+                    continue;
+                };
+                let owner_id =
+                    cast::snowflake(value, &cast::field_path(&owners_path, kind.as_str()))?;
+                authorizing_integration_owners.insert(kind, owner_id);
+            }
+        }
+
+        let modal_interaction = match cast::optional_object(object, path, "modal_interaction")? {
+            Some(modal) => {
+                let modal_path = cast::field_path(path, "modal_interaction");
+                Some(Box::new(Self::from_object_at(modal, &modal_path)?))
+            }
+            None => None,
+        };
+
+        let target_user_path = cast::field_path(path, "target_user");
+        let target_user = cast::optional_object(object, path, "target_user")?
+            .map(|user| User::from_object_at(user, &target_user_path))
+            .transpose()?;
+
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            kind: cast::required_enum(
+                object,
+                path,
+                "type",
+                "an interaction type",
+                InteractionType::from_value,
+            )?,
+            user,
+            authorizing_integration_owners,
+            original_response_message_id: cast::optional_snowflake(
+                object,
+                path,
+                "original_response_message_id",
+            )?,
+            interacted_message_id: cast::optional_snowflake(object, path, "interacted_message_id")?,
+            modal_interaction,
+            target_user,
+            target_message_id: cast::optional_snowflake(object, path, "target_message_id")?,
+        })
     }
 
     /// Adds an integration owner.
@@ -1610,6 +1717,7 @@ mod tests {
     use std::time::SystemTime;
 
     use abc::{HasId, Snowflake};
+    use data::json;
     use enums::{
         ApplicationCommandOptionType, ApplicationCommandType, ApplicationIntegrationType,
         ComponentType, InteractionContextType, InteractionResponseType, InteractionType,
@@ -2126,6 +2234,95 @@ mod tests {
                 .and_then(|resolved| resolved.channel(1_u64))
                 .map(|channel| channel.name.as_str()),
             Some("general")
+        );
+    }
+
+    #[test]
+    fn decodes_message_interactions_and_metadata() {
+        let interaction = MessageInteraction::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "50",
+                    "type": 3,
+                    "name": "confirm",
+                    "user": {"id": "1", "username": "winter"}
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(interaction.id, Snowflake::new(50));
+        assert_eq!(interaction.kind, InteractionType::MessageComponent);
+        assert_eq!(interaction.name, "confirm");
+        assert_eq!(interaction.user.id(), Snowflake::new(1));
+
+        let metadata = MessageInteractionMetadata::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "60",
+                    "type": 5,
+                    "user": {"id": "1", "username": "winter"},
+                    "authorizing_integration_owners": {"0": "100", "1": "1", "9": "7"},
+                    "original_response_message_id": "61",
+                    "interacted_message_id": "62",
+                    "target_user": {"id": "2", "username": "target"},
+                    "target_message_id": "63",
+                    "modal_interaction": {
+                        "id": "59",
+                        "type": 3,
+                        "user": {"id": "1", "username": "winter"}
+                    }
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(metadata.kind, InteractionType::ModalSubmit);
+        assert_eq!(metadata.authorizing_integration_owners.len(), 2);
+        assert_eq!(
+            metadata
+                .authorizing_integration_owners
+                .get(&ApplicationIntegrationType::GuildInstall),
+            Some(&Snowflake::new(100))
+        );
+        assert_eq!(
+            metadata
+                .authorizing_integration_owners
+                .get(&ApplicationIntegrationType::UserInstall),
+            Some(&Snowflake::new(1))
+        );
+        assert_eq!(
+            metadata.original_response_message_id,
+            Some(Snowflake::new(61))
+        );
+        assert_eq!(metadata.interacted_message_id, Some(Snowflake::new(62)));
+        assert_eq!(
+            metadata.target_user.as_ref().map(|user| user.id),
+            Some(Snowflake::new(2))
+        );
+        assert_eq!(metadata.target_message_id, Some(Snowflake::new(63)));
+        let modal = metadata.modal_interaction.as_ref().unwrap();
+        assert_eq!(modal.id, Snowflake::new(59));
+        assert_eq!(modal.kind, InteractionType::MessageComponent);
+        assert!(modal.modal_interaction.is_none());
+
+        let missing_user = MessageInteraction::from_value(
+            &json::from_str(r#"{"id":"50","type":2,"name":"command"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(missing_user.to_string(), "missing field `interaction.user`");
+
+        let bad_owner = MessageInteractionMetadata::from_value(
+            &json::from_str(
+                r#"{"id":"60","type":2,"user":{"id":"1","username":"winter"},"authorizing_integration_owners":{"0":"nope"}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_owner.to_string(),
+            "field `interaction_metadata.authorizing_integration_owners.guild_install` must be a snowflake"
         );
     }
 }

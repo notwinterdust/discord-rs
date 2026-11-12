@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{Asset, Colour, HasId, Snowflake};
-use data::Value;
+use data::{Object, Value};
 use enums::{MemberFlags, Permissions, PublicUserFlags};
 
 use crate::cast::{self, CastError};
@@ -88,7 +88,17 @@ impl Member {
         let object = cast::object(value, path)?;
         let user_path = cast::field_path(path, "user");
         let user = User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?;
+        Self::from_object_with_user_at(object, path, guild_id, roles, user)
+    }
 
+    /// Decodes a member object that does not repeat the nested user object.
+    pub(crate) fn from_object_with_user_at(
+        object: &Object,
+        path: &str,
+        guild_id: Snowflake,
+        roles: &[Role],
+        user: User,
+    ) -> Result<Self, CastError> {
         let mut member_roles = Vec::new();
         if let Some(role_ids) = cast::optional_array(object, path, "roles")? {
             let roles_path = cast::field_path(path, "roles");

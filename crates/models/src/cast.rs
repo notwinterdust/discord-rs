@@ -50,7 +50,7 @@ impl CastError {
         }
     }
 
-    fn invalid_value(path: &str, expected: &'static str) -> Self {
+    pub(crate) fn invalid_value(path: &str, expected: &'static str) -> Self {
         Self::InvalidValue {
             path: path.to_owned(),
             expected,
@@ -167,6 +167,20 @@ pub(crate) fn u8(value: &Value, path: &str) -> Result<u8, CastError> {
     u8::try_from(raw).map_err(|_| CastError::invalid_value(path, "an 8-bit integer"))
 }
 
+/// Reads a 16-bit unsigned integer, reporting the path on failure.
+pub(crate) fn u16(value: &Value, path: &str) -> Result<u16, CastError> {
+    let raw = u64(value, path)?;
+    u16::try_from(raw).map_err(|_| CastError::invalid_value(path, "a 16-bit integer"))
+}
+
+/// Reads a floating-point number, reporting the path on failure.
+pub(crate) fn f64(value: &Value, path: &str) -> Result<f64, CastError> {
+    value
+        .as_number()
+        .map(data::Number::as_f64)
+        .ok_or_else(|| CastError::invalid_type(path, "a number"))
+}
+
 /// Reads an enumerated value from its raw integer representation.
 pub(crate) fn enum_value<T>(
     value: &Value,
@@ -211,6 +225,61 @@ pub(crate) fn permission_bits(value: &Value, path: &str) -> Result<u64, CastErro
     value
         .as_u64()
         .ok_or_else(|| CastError::invalid_type(path, "a permission bitfield"))
+}
+
+/// Decodes a standard base64 string.
+pub(crate) fn base64(value: &Value, path: &str) -> Result<Vec<u8>, CastError> {
+    let text = string(value, path)?;
+    decode_base64(text).ok_or_else(|| CastError::invalid_value(path, "a base64 string"))
+}
+
+fn decode_base64(text: &str) -> Option<Vec<u8>> {
+    let bytes = text.as_bytes();
+    if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
+        return None;
+    }
+
+    let padding = bytes.iter().rev().take_while(|byte| **byte == b'=').count();
+    if padding > 2 || bytes[..bytes.len() - padding].contains(&b'=') {
+        return None;
+    }
+
+    let mut decoded = Vec::with_capacity(bytes.len() / 4 * 3 - padding);
+    for chunk in bytes.as_chunks::<4>().0 {
+        let mut values = [0_u8; 4];
+        for (index, byte) in chunk.iter().enumerate() {
+            values[index] = if *byte == b'=' {
+                0
+            } else {
+                base64_value(*byte)?
+            };
+        }
+
+        let combined = (u32::from(values[0]) << 18)
+            | (u32::from(values[1]) << 12)
+            | (u32::from(values[2]) << 6)
+            | u32::from(values[3]);
+        decoded.push((combined >> 16) as u8);
+        if chunk[2] != b'=' {
+            decoded.push((combined >> 8) as u8);
+        }
+        if chunk[3] != b'=' {
+            decoded.push(combined as u8);
+        }
+    }
+
+    Some(decoded)
+}
+
+fn base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
 }
 
 /// Reads a 24-bit colour.
@@ -274,6 +343,24 @@ pub(crate) fn optional_array<'a>(
     optional(object, parent, field)
         .map(|(value, path)| array(value, &path))
         .transpose()
+}
+
+/// Decodes an optional array field with the given element decoder.
+pub(crate) fn optional_array_of<T>(
+    object: &Object,
+    parent: &str,
+    field: &str,
+    mut decode: impl FnMut(&Value, &str) -> Result<T, CastError>,
+) -> Result<Option<Vec<T>>, CastError> {
+    let Some(values) = optional_array(object, parent, field)? else {
+        return Ok(None);
+    };
+    let path = field_path(parent, field);
+    let mut decoded = Vec::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        decoded.push(decode(value, &index_path(&path, index))?);
+    }
+    Ok(Some(decoded))
 }
 
 /// Reads an optional array of strings.
@@ -344,6 +431,12 @@ pub(crate) fn optional_bool(
         .map(|value| value.unwrap_or(default))
 }
 
+/// Reads a required boolean field.
+pub(crate) fn required_bool(object: &Object, parent: &str, field: &str) -> Result<bool, CastError> {
+    let (value, path) = required(object, parent, field)?;
+    boolean(value, &path)
+}
+
 /// Reads an optional unsigned integer field.
 pub(crate) fn optional_u64(
     object: &Object,
@@ -353,6 +446,18 @@ pub(crate) fn optional_u64(
     optional(object, parent, field)
         .map(|(value, path)| u64(value, &path))
         .transpose()
+}
+
+/// Reads a required unsigned integer field.
+pub(crate) fn required_u64(object: &Object, parent: &str, field: &str) -> Result<u64, CastError> {
+    let (value, path) = required(object, parent, field)?;
+    u64(value, &path)
+}
+
+/// Reads a required 32-bit unsigned integer field.
+pub(crate) fn required_u32(object: &Object, parent: &str, field: &str) -> Result<u32, CastError> {
+    let (value, path) = required(object, parent, field)?;
+    u32(value, &path)
 }
 
 /// Reads an optional signed integer field.
@@ -388,6 +493,28 @@ pub(crate) fn optional_u8(
         .transpose()
 }
 
+/// Reads an optional 16-bit unsigned integer field.
+pub(crate) fn optional_u16(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<Option<u16>, CastError> {
+    optional(object, parent, field)
+        .map(|(value, path)| u16(value, &path))
+        .transpose()
+}
+
+/// Reads an optional floating-point field.
+pub(crate) fn optional_f64(
+    object: &Object,
+    parent: &str,
+    field: &str,
+) -> Result<Option<f64>, CastError> {
+    optional(object, parent, field)
+        .map(|(value, path)| f64(value, &path))
+        .transpose()
+}
+
 /// Reads a required enumerated field.
 pub(crate) fn required_enum<T>(
     object: &Object,
@@ -411,6 +538,23 @@ pub(crate) fn optional_enum<T>(
     optional(object, parent, field)
         .map(|(value, path)| enum_value(value, &path, expected, convert))
         .transpose()
+}
+
+/// Reads an optional enumerated field from its string name.
+pub(crate) fn optional_named_enum<T>(
+    object: &Object,
+    parent: &str,
+    field: &str,
+    expected: &'static str,
+    convert: impl FnOnce(&str) -> Option<T>,
+) -> Result<Option<T>, CastError> {
+    let Some((value, path)) = optional(object, parent, field) else {
+        return Ok(None);
+    };
+    let name = string(value, &path)?;
+    convert(name)
+        .map(Some)
+        .ok_or_else(|| CastError::invalid_value(&path, expected))
 }
 
 /// Reads an optional colour field.
@@ -608,8 +752,8 @@ mod tests {
     use data::{Object, Value, json};
 
     use super::{
-        CastError, field_path, index_path, optional_permission_bits, permission_bits, snowflake,
-        timestamp,
+        CastError, base64, field_path, index_path, optional_permission_bits, permission_bits,
+        snowflake, timestamp,
     };
 
     #[test]
@@ -738,6 +882,33 @@ mod tests {
         assert_eq!(
             snowflake(value.get("id").unwrap(), "id").unwrap(),
             Snowflake::new(1)
+        );
+    }
+
+    #[test]
+    fn base64_strings_are_decoded() {
+        assert_eq!(base64(&Value::from("AQID"), "data").unwrap(), [1, 2, 3]);
+        assert_eq!(base64(&Value::from("AQ=="), "data").unwrap(), [1]);
+        assert_eq!(base64(&Value::from("AQI="), "data").unwrap(), [1, 2]);
+        assert_eq!(base64(&Value::from("+/8="), "data").unwrap(), [251, 255]);
+
+        assert_eq!(
+            base64(&Value::from("!"), "data").unwrap_err().to_string(),
+            "field `data` must be a base64 string"
+        );
+        assert_eq!(
+            base64(&Value::from("A"), "data").unwrap_err().to_string(),
+            "field `data` must be a base64 string"
+        );
+        assert_eq!(
+            base64(&Value::from("A==="), "data")
+                .unwrap_err()
+                .to_string(),
+            "field `data` must be a base64 string"
+        );
+        assert_eq!(
+            base64(&Value::from(1), "data").unwrap_err().to_string(),
+            "field `data` must be a string"
         );
     }
 }

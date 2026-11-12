@@ -9,6 +9,8 @@
 //! `from_value` constructors, which report the path of any malformed field.
 //! Guild payloads decode their roles, members, channels, stickers and scheduled
 //! events together, resolving member role IDs against the decoded roles.
+//! Message payloads decode their attachments, embeds, components, polls,
+//! reactions, stickers, references and interaction metadata.
 
 #![forbid(unsafe_code)]
 

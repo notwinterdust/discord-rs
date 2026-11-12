@@ -56,6 +56,31 @@ impl StickerItem {
         self
     }
 
+    /// Decodes a sticker item from a Discord sticker item object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "sticker_item")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            format: cast::required_enum(
+                object,
+                path,
+                "format_type",
+                "a sticker format",
+                StickerFormatType::from_value,
+            )?,
+        })
+    }
+
     /// Returns the URL of the sticker's image.
     #[must_use]
     pub fn url(&self) -> String {
@@ -642,6 +667,26 @@ mod tests {
         assert_eq!(
             bad_user.to_string(),
             "field `sticker.user.id` must be a snowflake"
+        );
+    }
+
+    #[test]
+    fn decodes_sticker_items() {
+        let item = StickerItem::from_value(
+            &json::from_str(r#"{"id":"10","name":"wave","format_type":4}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(item.id, Snowflake::new(10));
+        assert_eq!(item.name, "wave");
+        assert_eq!(item.format, StickerFormatType::Gif);
+        assert_eq!(item.url(), "https://media.discordapp.net/stickers/10.gif");
+
+        let missing_format =
+            StickerItem::from_value(&json::from_str(r#"{"id":"10","name":"wave"}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(
+            missing_format.to_string(),
+            "missing field `sticker_item.format_type`"
         );
     }
 }

@@ -8,9 +8,11 @@
 use std::fmt;
 
 use abc::Snowflake;
+use data::{Object, Value};
 use enums::{ButtonStyle, ChannelType, ComponentType, SelectDefaultValueType, TextStyle};
 
 use crate::PartialEmoji;
+use crate::cast::{self, CastError};
 
 /// A child component that can be placed inside an [`ActionRow`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,6 +82,47 @@ impl From<TextInput> for ActionRowChild {
     }
 }
 
+impl ActionRowChild {
+    /// Decodes a child component from a Discord component object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the component type is missing, unknown or
+    /// not supported inside an action row.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "component")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let kind = cast::required_enum(
+            object,
+            path,
+            "type",
+            "a component type",
+            ComponentType::from_value,
+        )?;
+        match kind {
+            ComponentType::Button => Ok(Self::Button(Button::from_object_at(object, path)?)),
+            ComponentType::StringSelect
+            | ComponentType::UserSelect
+            | ComponentType::RoleSelect
+            | ComponentType::MentionableSelect
+            | ComponentType::ChannelSelect => {
+                Ok(Self::Select(SelectMenu::from_object_at(object, path)?))
+            }
+            ComponentType::TextInput => {
+                Ok(Self::TextInput(TextInput::from_object_at(object, path)?))
+            }
+            _ => Err(CastError::invalid_value(path, "a supported component type")),
+        }
+    }
+}
+
 /// A row of up to five components.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ActionRow {
@@ -94,6 +137,33 @@ impl ActionRow {
     #[must_use]
     pub fn new(children: Vec<ActionRowChild>) -> Self {
         Self { id: None, children }
+    }
+
+    /// Decodes an action row from a Discord action row object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a nested component is malformed.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "action_row")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            id: cast::optional_u64(object, path, "id")?,
+            children: cast::optional_array_of(
+                object,
+                path,
+                "components",
+                ActionRowChild::from_value_at,
+            )?
+            .unwrap_or_default(),
+        })
     }
 
     /// Sets the component ID.
@@ -172,6 +242,44 @@ impl Button {
             style,
             ..Self::default()
         }
+    }
+
+    /// Decodes a button from a Discord button component object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "button")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let emoji_path = cast::field_path(path, "emoji");
+        let emoji = cast::optional_object(object, path, "emoji")?
+            .map(|emoji| PartialEmoji::from_object_at(emoji, &emoji_path))
+            .transpose()?;
+        Ok(Self {
+            id: cast::optional_u64(object, path, "id")?,
+            style: cast::required_enum(
+                object,
+                path,
+                "style",
+                "a button style",
+                ButtonStyle::from_value,
+            )?,
+            custom_id: cast::optional_string(object, path, "custom_id")?.map(str::to_owned),
+            url: cast::optional_string(object, path, "url")?.map(str::to_owned),
+            disabled: cast::optional_bool(object, path, "disabled", false)?,
+            label: cast::optional_string(object, path, "label")?.map(str::to_owned),
+            emoji,
+            sku_id: cast::optional_snowflake(object, path, "sku_id")?,
+        })
     }
 
     /// Sets the component ID.
@@ -295,6 +403,77 @@ impl SelectMenu {
             custom_id: custom_id.into(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a select menu from a Discord select component object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a select menu type is unknown or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "select")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let kind = cast::optional_enum(
+            object,
+            path,
+            "type",
+            "a component type",
+            ComponentType::from_value,
+        )?
+        .unwrap_or(ComponentType::StringSelect);
+        if !matches!(
+            kind,
+            ComponentType::StringSelect
+                | ComponentType::UserSelect
+                | ComponentType::RoleSelect
+                | ComponentType::MentionableSelect
+                | ComponentType::ChannelSelect
+        ) {
+            return Err(CastError::invalid_value(path, "a select menu type"));
+        }
+
+        let mut channel_types = Vec::new();
+        if let Some(values) = cast::optional_array(object, path, "channel_types")? {
+            let channel_types_path = cast::field_path(path, "channel_types");
+            channel_types.reserve(values.len());
+            for (index, value) in values.iter().enumerate() {
+                channel_types.push(cast::enum_value(
+                    value,
+                    &cast::index_path(&channel_types_path, index),
+                    "a channel type",
+                    ChannelType::from_value,
+                )?);
+            }
+        }
+
+        Ok(Self {
+            id: cast::optional_u64(object, path, "id")?,
+            kind,
+            custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+            placeholder: cast::optional_string(object, path, "placeholder")?.map(str::to_owned),
+            min_values: cast::optional_u8(object, path, "min_values")?.unwrap_or(1),
+            max_values: cast::optional_u8(object, path, "max_values")?.unwrap_or(1),
+            options: cast::optional_array_of(object, path, "options", SelectOption::from_value_at)?
+                .unwrap_or_default(),
+            disabled: cast::optional_bool(object, path, "disabled", false)?,
+            channel_types,
+            default_values: cast::optional_array_of(
+                object,
+                path,
+                "default_values",
+                SelectDefaultValue::from_value_at,
+            )?
+            .unwrap_or_default(),
+            required: cast::optional_bool(object, path, "required", false)?,
+        })
     }
 
     /// Creates a user select menu.
@@ -456,6 +635,35 @@ impl SelectOption {
         }
     }
 
+    /// Decodes an option from a Discord select option object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "option")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let emoji_path = cast::field_path(path, "emoji");
+        let emoji = cast::optional_object(object, path, "emoji")?
+            .map(|emoji| PartialEmoji::from_object_at(emoji, &emoji_path))
+            .transpose()?;
+        Ok(Self {
+            label: cast::required_string(object, path, "label")?.to_owned(),
+            value: cast::required_string(object, path, "value")?.to_owned(),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            emoji,
+            default: cast::optional_bool(object, path, "default", false)?,
+        })
+    }
+
     /// Sets the option's value.
     #[must_use]
     pub fn with_value(mut self, value: impl Into<String>) -> Self {
@@ -518,6 +726,32 @@ impl SelectDefaultValue {
             id: id.into(),
             value_type,
         }
+    }
+
+    /// Decodes a default value from a Discord select default value object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "default_value")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let (kind, kind_path) = cast::required(object, path, "type")?;
+        let kind = cast::string(kind, &kind_path)?;
+        let value_type = SelectDefaultValueType::from_name(kind)
+            .ok_or_else(|| CastError::invalid_value(&kind_path, "a select default value type"))?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            value_type,
+        })
     }
 
     /// Creates a default value for a user.
@@ -589,6 +823,42 @@ impl TextInput {
         }
     }
 
+    /// Decodes a text input from a Discord text input component object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "text_input")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            id: cast::optional_u64(object, path, "id")?,
+            custom_id: cast::required_string(object, path, "custom_id")?.to_owned(),
+            label: cast::optional_string(object, path, "label")?.map(str::to_owned),
+            style: cast::optional_enum(
+                object,
+                path,
+                "style",
+                "a text input style",
+                TextStyle::from_value,
+            )?
+            .unwrap_or_default(),
+            placeholder: cast::optional_string(object, path, "placeholder")?.map(str::to_owned),
+            value: cast::optional_string(object, path, "value")?.map(str::to_owned),
+            required: cast::optional_bool(object, path, "required", true)?,
+            min_length: cast::optional_u16(object, path, "min_length")?,
+            max_length: cast::optional_u16(object, path, "max_length")?,
+        })
+    }
+
     /// Sets the component ID.
     #[must_use]
     pub fn with_id(mut self, id: u64) -> Self {
@@ -648,6 +918,7 @@ impl TextInput {
 #[cfg(test)]
 mod tests {
     use abc::Snowflake;
+    use data::json;
     use enums::{ButtonStyle, ChannelType, ComponentType, SelectDefaultValueType, TextStyle};
 
     use super::{
@@ -810,5 +1081,193 @@ mod tests {
         assert!(required.required);
         assert_eq!(required.default_value(), None);
         assert!(TextInput::default().required);
+    }
+
+    #[test]
+    fn decodes_action_rows_and_buttons() {
+        let value = json::from_str(
+            r#"{
+                "type": 1,
+                "id": 7,
+                "components": [
+                    {
+                        "type": 2,
+                        "id": 8,
+                        "style": 1,
+                        "custom_id": "confirm",
+                        "label": "Confirm",
+                        "emoji": {"id": "10", "name": "check", "animated": true},
+                        "disabled": true,
+                        "sku_id": "11"
+                    },
+                    {
+                        "type": 2,
+                        "style": 5,
+                        "url": "https://example.com",
+                        "label": "Open"
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let row = ActionRow::from_value(&value).unwrap();
+        assert_eq!(row.id, Some(7));
+        assert_eq!(row.children.len(), 2);
+
+        let button = row.children[0].as_button().unwrap();
+        assert_eq!(button.id, Some(8));
+        assert_eq!(button.style, ButtonStyle::Primary);
+        assert_eq!(button.custom_id.as_deref(), Some("confirm"));
+        assert_eq!(button.label.as_deref(), Some("Confirm"));
+        assert!(button.disabled);
+        assert_eq!(button.sku_id, Some(Snowflake::new(11)));
+        assert_eq!(
+            button.emoji.as_ref().and_then(|emoji| emoji.id),
+            Some(Snowflake::new(10))
+        );
+
+        let link = row.children[1].as_button().unwrap();
+        assert_eq!(link.style, ButtonStyle::Link);
+        assert_eq!(link.url.as_deref(), Some("https://example.com"));
+        assert!(!link.disabled);
+        assert!(link.custom_id.is_none());
+
+        let empty = ActionRow::from_value(&json::from_str(r#"{"type":1}"#).unwrap()).unwrap();
+        assert!(empty.children.is_empty());
+        assert_eq!(empty.id, None);
+    }
+
+    #[test]
+    fn decodes_selects_and_text_inputs() {
+        let value = json::from_str(
+            r#"{
+                "type": 3,
+                "id": 1,
+                "custom_id": "choose",
+                "placeholder": "Pick one",
+                "min_values": 1,
+                "max_values": 2,
+                "options": [
+                    {
+                        "label": "First",
+                        "value": "first",
+                        "description": "The first option",
+                        "emoji": {"name": "1️⃣"},
+                        "default": true
+                    }
+                ],
+                "disabled": true,
+                "channel_types": [0, 2],
+                "default_values": [
+                    {"id": "5", "type": "user"},
+                    {"id": "6", "type": "role"}
+                ],
+                "required": true
+            }"#,
+        )
+        .unwrap();
+
+        let menu = SelectMenu::from_value(&value).unwrap();
+        assert_eq!(menu.id, Some(1));
+        assert_eq!(menu.kind, ComponentType::StringSelect);
+        assert_eq!(menu.custom_id, "choose");
+        assert_eq!(menu.placeholder.as_deref(), Some("Pick one"));
+        assert_eq!(menu.min_values, 1);
+        assert_eq!(menu.max_values, 2);
+        assert_eq!(menu.options.len(), 1);
+        assert!(menu.options[0].default);
+        assert!(menu.disabled);
+        assert_eq!(menu.channel_types, [ChannelType::Text, ChannelType::Voice]);
+        assert_eq!(menu.default_values.len(), 2);
+        assert_eq!(
+            menu.default_values[0].value_type,
+            SelectDefaultValueType::User
+        );
+        assert_eq!(
+            menu.default_values[1].value_type,
+            SelectDefaultValueType::Role
+        );
+        assert!(menu.required);
+
+        let channel = SelectMenu::from_value(
+            &json::from_str(
+                r#"{"type":8,"custom_id":"channel","channel_types":[15,16],"default_values":[{"id":"7","type":"channel"}]}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(channel.kind, ComponentType::ChannelSelect);
+        assert_eq!(
+            channel.channel_types,
+            [ChannelType::Forum, ChannelType::Media]
+        );
+        assert_eq!(
+            channel.default_values[0].value_type,
+            SelectDefaultValueType::Channel
+        );
+
+        let input = TextInput::from_value(
+            &json::from_str(
+                r#"{
+                    "type": 4,
+                    "id": 2,
+                    "custom_id": "answer",
+                    "label": "Answer",
+                    "style": 2,
+                    "placeholder": "Type here",
+                    "value": "default",
+                    "required": false,
+                    "min_length": 1,
+                    "max_length": 100
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(input.id, Some(2));
+        assert_eq!(input.style, TextStyle::Paragraph);
+        assert_eq!(input.label.as_deref(), Some("Answer"));
+        assert_eq!(input.default_value(), Some("default"));
+        assert!(!input.required);
+        assert_eq!(input.min_length, Some(1));
+        assert_eq!(input.max_length, Some(100));
+    }
+
+    #[test]
+    fn rejects_malformed_components() {
+        let missing_type = ActionRowChild::from_value(&json::from_str("{}").unwrap()).unwrap_err();
+        assert_eq!(missing_type.to_string(), "missing field `component.type`");
+
+        let unsupported =
+            ActionRowChild::from_value(&json::from_str(r#"{"type":9}"#).unwrap()).unwrap_err();
+        assert_eq!(
+            unsupported.to_string(),
+            "field `component` must be a supported component type"
+        );
+
+        let bad_button = ActionRowChild::from_value(
+            &json::from_str(r#"{"type":2,"label":"Missing style"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(bad_button.to_string(), "missing field `component.style`");
+
+        let bad_select = ActionRowChild::from_value(
+            &json::from_str(r#"{"type":3,"custom_id":"choose","channel_types":[99]}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_select.to_string(),
+            "field `component.channel_types[0]` must be a channel type"
+        );
+
+        let bad_default = SelectDefaultValue::from_value(
+            &json::from_str(r#"{"id":"5","type":"guild"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_default.to_string(),
+            "field `default_value.type` must be a select default value type"
+        );
     }
 }

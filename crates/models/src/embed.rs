@@ -7,7 +7,10 @@
 use std::time::SystemTime;
 
 use abc::Colour;
+use data::{Object, Value};
 use enums::{EmbedFlags, EmbedType};
+
+use crate::cast::{self, CastError};
 
 macro_rules! define_embed_media {
     ($(#[$meta:meta])* $name:ident) => {
@@ -56,6 +59,40 @@ macro_rules! define_embed_media {
             pub fn with_flags(mut self, flags: EmbedFlags) -> Self {
                 self.flags = flags;
                 self
+            }
+
+            /// Decodes the media from a Discord embed media object.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`CastError`] when a required field is missing or a
+            /// field has an unexpected type.
+            pub fn from_value(value: &Value) -> Result<Self, CastError> {
+                Self::from_value_at(value, "media")
+            }
+
+            pub(crate) fn from_value_at(
+                value: &Value,
+                path: &str,
+            ) -> Result<Self, CastError> {
+                let object = cast::object(value, path)?;
+                Self::from_object_at(object, path)
+            }
+
+            pub(crate) fn from_object_at(
+                object: &Object,
+                path: &str,
+            ) -> Result<Self, CastError> {
+                Ok(Self {
+                    url: cast::required_string(object, path, "url")?.to_owned(),
+                    proxy_url: cast::optional_string(object, path, "proxy_url")?
+                        .map(str::to_owned),
+                    height: cast::optional_u64(object, path, "height")?,
+                    width: cast::optional_u64(object, path, "width")?,
+                    flags: EmbedFlags::from_bits(
+                        cast::optional_u64(object, path, "flags")?.unwrap_or(0),
+                    ),
+                })
             }
         }
     };
@@ -110,6 +147,30 @@ impl EmbedFooter {
         self.proxy_icon_url = Some(proxy_icon_url.into());
         self
     }
+
+    /// Decodes a footer from a Discord embed footer object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "footer")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            text: cast::required_string(object, path, "text")?.to_owned(),
+            icon_url: cast::optional_string(object, path, "icon_url")?.map(str::to_owned),
+            proxy_icon_url: cast::optional_string(object, path, "proxy_icon_url")?
+                .map(str::to_owned),
+        })
+    }
 }
 
 /// The author section of an embed.
@@ -155,6 +216,31 @@ impl EmbedAuthor {
         self.proxy_icon_url = Some(proxy_icon_url.into());
         self
     }
+
+    /// Decodes an author from a Discord embed author object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "author")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            url: cast::optional_string(object, path, "url")?.map(str::to_owned),
+            icon_url: cast::optional_string(object, path, "icon_url")?.map(str::to_owned),
+            proxy_icon_url: cast::optional_string(object, path, "proxy_icon_url")?
+                .map(str::to_owned),
+        })
+    }
 }
 
 /// A single field inside an embed.
@@ -184,6 +270,29 @@ impl EmbedField {
     pub fn with_inline(mut self, inline: bool) -> Self {
         self.inline = inline;
         self
+    }
+
+    /// Decodes a field from a Discord embed field object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "field")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            name: cast::required_string(object, path, "name")?.to_owned(),
+            value: cast::required_string(object, path, "value")?.to_owned(),
+            inline: cast::optional_bool(object, path, "inline", false)?,
+        })
     }
 }
 
@@ -218,6 +327,27 @@ impl EmbedProvider {
     pub fn with_url(mut self, url: impl Into<String>) -> Self {
         self.url = Some(url.into());
         self
+    }
+
+    /// Decodes a provider from a Discord embed provider object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "provider")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            name: cast::optional_string(object, path, "name")?.map(str::to_owned),
+            url: cast::optional_string(object, path, "url")?.map(str::to_owned),
+        })
     }
 }
 
@@ -259,6 +389,79 @@ impl Embed {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Decodes an embed from a Discord embed object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "embed")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let footer_path = cast::field_path(path, "footer");
+        let footer = cast::optional_object(object, path, "footer")?
+            .map(|footer| EmbedFooter::from_object_at(footer, &footer_path))
+            .transpose()?;
+
+        let image_path = cast::field_path(path, "image");
+        let image = cast::optional_object(object, path, "image")?
+            .map(|image| EmbedImage::from_object_at(image, &image_path))
+            .transpose()?;
+
+        let thumbnail_path = cast::field_path(path, "thumbnail");
+        let thumbnail = cast::optional_object(object, path, "thumbnail")?
+            .map(|thumbnail| EmbedThumbnail::from_object_at(thumbnail, &thumbnail_path))
+            .transpose()?;
+
+        let video_path = cast::field_path(path, "video");
+        let video = cast::optional_object(object, path, "video")?
+            .map(|video| EmbedVideo::from_object_at(video, &video_path))
+            .transpose()?;
+
+        let provider_path = cast::field_path(path, "provider");
+        let provider = cast::optional_object(object, path, "provider")?
+            .map(|provider| EmbedProvider::from_object_at(provider, &provider_path))
+            .transpose()?;
+
+        let author_path = cast::field_path(path, "author");
+        let author = cast::optional_object(object, path, "author")?
+            .map(|author| EmbedAuthor::from_object_at(author, &author_path))
+            .transpose()?;
+
+        let fields = cast::optional_array_of(object, path, "fields", EmbedField::from_value_at)?
+            .unwrap_or_default();
+
+        Ok(Self {
+            title: cast::optional_string(object, path, "title")?.map(str::to_owned),
+            kind: cast::optional_named_enum(
+                object,
+                path,
+                "type",
+                "an embed type",
+                EmbedType::from_name,
+            )?
+            .unwrap_or_default(),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            url: cast::optional_string(object, path, "url")?.map(str::to_owned),
+            timestamp: cast::optional_timestamp(object, path, "timestamp")?,
+            colour: cast::optional_colour(object, path, "color")?,
+            footer,
+            image,
+            thumbnail,
+            video,
+            provider,
+            author,
+            fields,
+            flags: EmbedFlags::from_bits(cast::optional_u64(object, path, "flags")?.unwrap_or(0)),
+        })
     }
 
     /// Sets the title.
@@ -441,10 +644,11 @@ impl Embed {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use abc::Colour;
-    use enums::EmbedFlags;
+    use data::json;
+    use enums::{EmbedFlags, EmbedType};
 
     use super::{
         Embed, EmbedAuthor, EmbedField, EmbedFooter, EmbedImage, EmbedProvider, EmbedThumbnail,
@@ -585,5 +789,116 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(a, c);
         assert_ne!(a, Embed::new().with_title("Title"));
+    }
+
+    #[test]
+    fn decodes_full_and_minimal_embeds() {
+        let value = json::from_str(
+            r#"{
+                "title": "Title",
+                "type": "article",
+                "description": "Description",
+                "url": "https://example.com",
+                "timestamp": "2021-08-01T12:34:56Z",
+                "color": 5793266,
+                "footer": {
+                    "text": "Footer",
+                    "icon_url": "https://example.com/icon.png",
+                    "proxy_icon_url": "https://example.com/proxy-icon.png"
+                },
+                "image": {
+                    "url": "https://example.com/image.png",
+                    "proxy_url": "https://example.com/proxy-image.png",
+                    "height": 100,
+                    "width": 200,
+                    "flags": 16
+                },
+                "thumbnail": {"url": "https://example.com/thumb.png"},
+                "video": {"url": "https://example.com/video.mp4"},
+                "provider": {"name": "Provider", "url": "https://provider.example"},
+                "author": {
+                    "name": "Author",
+                    "url": "https://author.example",
+                    "icon_url": "https://author.example/icon.png",
+                    "proxy_icon_url": "https://author.example/proxy.png"
+                },
+                "fields": [
+                    {"name": "First", "value": "One", "inline": true},
+                    {"name": "Second", "value": "Two"}
+                ],
+                "flags": 32
+            }"#,
+        )
+        .unwrap();
+
+        let embed = Embed::from_value(&value).unwrap();
+        assert_eq!(embed.title.as_deref(), Some("Title"));
+        assert_eq!(embed.kind, EmbedType::Article);
+        assert_eq!(embed.description.as_deref(), Some("Description"));
+        assert_eq!(embed.url.as_deref(), Some("https://example.com"));
+        assert_eq!(
+            embed.timestamp,
+            Some(UNIX_EPOCH + Duration::new(1_627_821_296, 0))
+        );
+        assert_eq!(embed.colour, Some(Colour::new(5_793_266)));
+        assert_eq!(
+            embed.footer.as_ref().map(|footer| footer.text.as_str()),
+            Some("Footer")
+        );
+        let image = embed.image.as_ref().unwrap();
+        assert_eq!(image.url, "https://example.com/image.png");
+        assert_eq!(image.height, Some(100));
+        assert_eq!(image.width, Some(200));
+        assert_eq!(image.flags, EmbedFlags::CONTAINS_EXPLICIT_MEDIA);
+        assert_eq!(
+            embed.thumbnail.as_ref().map(|thumb| thumb.url.as_str()),
+            Some("https://example.com/thumb.png")
+        );
+        assert_eq!(
+            embed.video.as_ref().map(|video| video.url.as_str()),
+            Some("https://example.com/video.mp4")
+        );
+        assert_eq!(
+            embed
+                .provider
+                .as_ref()
+                .and_then(|provider| provider.name.as_deref()),
+            Some("Provider")
+        );
+        assert_eq!(
+            embed.author.as_ref().map(|author| author.name.as_str()),
+            Some("Author")
+        );
+        assert_eq!(embed.fields.len(), 2);
+        assert!(embed.fields[0].inline);
+        assert!(!embed.fields[1].inline);
+        assert_eq!(embed.flags, EmbedFlags::CONTENT_INVENTORY_ENTRY);
+
+        let minimal = Embed::from_value(&json::from_str("{}").unwrap()).unwrap();
+        assert_eq!(minimal.kind, EmbedType::Rich);
+        assert_eq!(minimal.title, None);
+        assert_eq!(minimal.footer, None);
+        assert!(minimal.fields.is_empty());
+        assert!(minimal.flags.is_empty());
+
+        let bad_type =
+            Embed::from_value(&json::from_str(r#"{"type":"unknown"}"#).unwrap()).unwrap_err();
+        assert_eq!(
+            bad_type.to_string(),
+            "field `embed.type` must be an embed type"
+        );
+
+        let bad_field =
+            Embed::from_value(&json::from_str(r#"{"fields":[{"name":"First"}]}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(
+            bad_field.to_string(),
+            "missing field `embed.fields[0].value`"
+        );
+
+        let bad_footer =
+            Embed::from_value(&json::from_str(r#"{"footer":{"icon_url":"x"}}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(bad_footer.to_string(), "missing field `embed.footer.text`");
     }
 }

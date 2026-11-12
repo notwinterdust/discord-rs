@@ -9,8 +9,10 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{HasId, Snowflake};
+use data::{Object, Value};
 use enums::{AttachmentFlags, MessageFlags, MessageReferenceType, MessageType};
 
+use crate::cast::{self, CastError};
 use crate::{
     ActionRow, Embed, Member, MessageInteraction, MessageInteractionMetadata, Poll, Reaction,
     StickerItem, User,
@@ -319,6 +321,41 @@ impl Attachment {
         self
     }
 
+    /// Decodes an attachment from a Discord attachment object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "attachment")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let waveform = cast::optional(object, path, "waveform")
+            .map(|(value, path)| cast::base64(value, &path))
+            .transpose()?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            filename: cast::required_string(object, path, "filename")?.to_owned(),
+            size: cast::required_u64(object, path, "size")?,
+            url: cast::required_string(object, path, "url")?.to_owned(),
+            proxy_url: cast::required_string(object, path, "proxy_url")?.to_owned(),
+            height: cast::optional_u64(object, path, "height")?,
+            width: cast::optional_u64(object, path, "width")?,
+            content_type: cast::optional_string(object, path, "content_type")?.map(str::to_owned),
+            description: cast::optional_string(object, path, "description")?.map(str::to_owned),
+            ephemeral: cast::optional_bool(object, path, "ephemeral", false)?,
+            duration: cast::optional_f64(object, path, "duration_secs")?,
+            waveform,
+            title: cast::optional_string(object, path, "title")?.map(str::to_owned),
+            flags: AttachmentFlags::from_bits(
+                cast::optional_u64(object, path, "flags")?.unwrap_or(0),
+            ),
+        })
+    }
+
     /// Returns whether the attachment is a spoiler.
     #[must_use]
     pub fn is_spoiler(&self) -> bool {
@@ -419,6 +456,38 @@ impl MessageReference {
     pub fn with_fail_if_not_exists(mut self, fail_if_not_exists: bool) -> Self {
         self.fail_if_not_exists = fail_if_not_exists;
         self
+    }
+
+    /// Decodes a message reference from a Discord message reference object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "reference")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            kind: cast::optional_enum(
+                object,
+                path,
+                "type",
+                "a message reference type",
+                MessageReferenceType::from_value,
+            )?
+            .unwrap_or_default(),
+            message_id: cast::optional_snowflake(object, path, "message_id")?,
+            channel_id: cast::required_snowflake(object, path, "channel_id")?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            fail_if_not_exists: cast::optional_bool(object, path, "fail_if_not_exists", true)?,
+        })
     }
 }
 
@@ -539,6 +608,141 @@ impl Message {
             timestamp: id.created_at(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a message from a Discord message object.
+    ///
+    /// Guild messages with a `member` object retain the guild-specific member
+    /// data; role IDs resolve to placeholder roles because message payloads do
+    /// not include the guild's full role list.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        let path = "message";
+        let object = cast::object(value, path)?;
+        let id = cast::required_snowflake(object, path, "id")?;
+        let channel_id = cast::required_snowflake(object, path, "channel_id")?;
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?;
+
+        let author_path = cast::field_path(path, "author");
+        let author_object = cast::required_object(object, path, "author")?;
+        let user = User::from_object_at(author_object, &author_path)?;
+        let author = if let Some(member) = cast::optional_object(object, path, "member")? {
+            let member_path = cast::field_path(path, "member");
+            MessageAuthor::from_member(Member::from_object_with_user_at(
+                member,
+                &member_path,
+                guild_id.unwrap_or_default(),
+                &[],
+                user,
+            )?)
+        } else {
+            MessageAuthor::from_user(user)
+        };
+
+        let mentions = cast::optional_array_of(object, path, "mentions", |value, path| {
+            Ok(MessageAuthor::from_user(User::from_value_at(value, path)?))
+        })?
+        .unwrap_or_default();
+
+        let mention_channels =
+            cast::optional_array_of(object, path, "mention_channels", |value, path| {
+                let object = cast::object(value, path)?;
+                cast::required_snowflake(object, path, "id")
+            })?
+            .unwrap_or_default();
+
+        let poll_path = cast::field_path(path, "poll");
+        let poll = cast::optional_object(object, path, "poll")?
+            .map(|poll| Poll::from_object_at(poll, &poll_path))
+            .transpose()?;
+
+        let reference_path = cast::field_path(path, "reference");
+        let reference = cast::optional_object(object, path, "reference")?
+            .map(|reference| MessageReference::from_object_at(reference, &reference_path))
+            .transpose()?;
+
+        let interaction_path = cast::field_path(path, "interaction");
+        let interaction = cast::optional_object(object, path, "interaction")?
+            .map(|interaction| MessageInteraction::from_object_at(interaction, &interaction_path))
+            .transpose()?;
+
+        let metadata_path = cast::field_path(path, "interaction_metadata");
+        let interaction_metadata = cast::optional_object(object, path, "interaction_metadata")?
+            .map(|metadata| MessageInteractionMetadata::from_object_at(metadata, &metadata_path))
+            .transpose()?;
+
+        let nonce = cast::optional(object, path, "nonce")
+            .map(|(value, path)| match value.as_str() {
+                Some(text) => Ok(text.to_owned()),
+                None if value.as_number().is_some() => Ok(value.to_string()),
+                None => Err(CastError::invalid_value(&path, "a string or number")),
+            })
+            .transpose()?;
+
+        Ok(Self {
+            id,
+            channel_id,
+            guild_id,
+            author,
+            content: cast::optional_string(object, path, "content")?
+                .unwrap_or_default()
+                .to_owned(),
+            timestamp: cast::required_timestamp(object, path, "timestamp")?,
+            edited_timestamp: cast::optional_timestamp(object, path, "edited_timestamp")?,
+            tts: cast::optional_bool(object, path, "tts", false)?,
+            mention_everyone: cast::optional_bool(object, path, "mention_everyone", false)?,
+            pinned: cast::optional_bool(object, path, "pinned", false)?,
+            message_type: cast::optional_enum(
+                object,
+                path,
+                "type",
+                "a message type",
+                MessageType::from_value,
+            )?
+            .unwrap_or_default(),
+            flags: MessageFlags::from_bits(cast::optional_u64(object, path, "flags")?.unwrap_or(0)),
+            mentions,
+            mention_role_ids: cast::optional_snowflake_array(object, path, "mention_roles")?
+                .unwrap_or_default(),
+            mention_channel_ids: mention_channels,
+            attachments: cast::optional_array_of(
+                object,
+                path,
+                "attachments",
+                Attachment::from_value_at,
+            )?
+            .unwrap_or_default(),
+            embeds: cast::optional_array_of(object, path, "embeds", Embed::from_value_at)?
+                .unwrap_or_default(),
+            sticker_items: cast::optional_array_of(
+                object,
+                path,
+                "sticker_items",
+                StickerItem::from_value_at,
+            )?
+            .unwrap_or_default(),
+            components: cast::optional_array_of(
+                object,
+                path,
+                "components",
+                ActionRow::from_value_at,
+            )?
+            .unwrap_or_default(),
+            poll,
+            reactions: cast::optional_array_of(object, path, "reactions", Reaction::from_value_at)?
+                .unwrap_or_default(),
+            reference,
+            webhook_id: cast::optional_snowflake(object, path, "webhook_id")?,
+            application_id: cast::optional_snowflake(object, path, "application_id")?,
+            interaction,
+            interaction_metadata,
+            position: cast::optional_i64(object, path, "position")?,
+            nonce,
+        })
     }
 
     /// Sets the ID of the guild containing the message.
@@ -815,9 +1019,11 @@ impl HasId for Message {
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use abc::User as _;
     use abc::{HasId, Snowflake};
+    use data::json;
     use enums::{
         AttachmentFlags, ButtonStyle, InteractionType, MessageFlags, MessageReferenceType,
         MessageType,
@@ -1125,5 +1331,368 @@ mod tests {
         a.hash(&mut hasher_a);
         b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn decodes_attachments_and_references() {
+        let attachment = Attachment::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "1",
+                    "filename": "SPOILER_voice.ogg",
+                    "size": 2048,
+                    "url": "https://cdn.example/voice.ogg",
+                    "proxy_url": "https://proxy.example/voice.ogg",
+                    "height": 100,
+                    "width": 200,
+                    "content_type": "audio/ogg",
+                    "description": "A voice message",
+                    "ephemeral": true,
+                    "duration_secs": 2.5,
+                    "waveform": "AQID",
+                    "title": "Voice",
+                    "flags": 8
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(attachment.id, Snowflake::new(1));
+        assert_eq!(attachment.filename, "SPOILER_voice.ogg");
+        assert_eq!(attachment.size, 2048);
+        assert_eq!(attachment.height, Some(100));
+        assert_eq!(attachment.width, Some(200));
+        assert_eq!(attachment.content_type.as_deref(), Some("audio/ogg"));
+        assert!(attachment.ephemeral);
+        assert_eq!(attachment.duration, Some(2.5));
+        assert_eq!(attachment.waveform, Some(vec![1, 2, 3]));
+        assert_eq!(attachment.title.as_deref(), Some("Voice"));
+        assert_eq!(attachment.flags, AttachmentFlags::SPOILER);
+        assert!(attachment.is_spoiler());
+        assert!(attachment.is_voice_message());
+
+        let bad_waveform = Attachment::from_value(
+            &json::from_str(
+                r#"{"id":"1","filename":"a","size":1,"url":"u","proxy_url":"p","waveform":"!"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_waveform.to_string(),
+            "field `attachment.waveform` must be a base64 string"
+        );
+
+        let empty_waveform = Attachment::from_value(
+            &json::from_str(
+                r#"{"id":"1","filename":"a","size":1,"url":"u","proxy_url":"p","waveform":""}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            empty_waveform.to_string(),
+            "field `attachment.waveform` must be a base64 string"
+        );
+
+        let reference = MessageReference::from_value(
+            &json::from_str(
+                r#"{"type":1,"message_id":"10","channel_id":"20","guild_id":"100","fail_if_not_exists":false}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reference.kind, MessageReferenceType::Forward);
+        assert_eq!(reference.message_id, Some(Snowflake::new(10)));
+        assert_eq!(reference.channel_id, Snowflake::new(20));
+        assert_eq!(reference.guild_id, Some(Snowflake::new(100)));
+        assert!(!reference.fail_if_not_exists);
+
+        let minimal =
+            MessageReference::from_value(&json::from_str(r#"{"channel_id":"20"}"#).unwrap())
+                .unwrap();
+        assert_eq!(minimal.kind, MessageReferenceType::Reply);
+        assert_eq!(minimal.message_id, None);
+        assert!(minimal.fail_if_not_exists);
+
+        let missing_channel =
+            MessageReference::from_value(&json::from_str(r#"{"message_id":"10"}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(
+            missing_channel.to_string(),
+            "missing field `reference.channel_id`"
+        );
+    }
+
+    #[test]
+    fn decodes_a_full_message_payload() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "channel_id": "20",
+                "guild_id": "100",
+                "author": {"id": "1", "username": "winter", "global_name": "Winter"},
+                "member": {
+                    "nick": "Frost",
+                    "roles": ["10"],
+                    "joined_at": "2021-08-01T12:34:56Z"
+                },
+                "content": "Hello <@2>",
+                "timestamp": "2021-08-01T12:34:56Z",
+                "edited_timestamp": "2021-08-02T00:00:00Z",
+                "tts": true,
+                "mention_everyone": true,
+                "pinned": true,
+                "type": 19,
+                "flags": 64,
+                "mentions": [{"id": "2", "username": "member"}],
+                "mention_roles": ["10"],
+                "mention_channels": [
+                    {"id": "30", "guild_id": "100", "type": 0, "name": "general"}
+                ],
+                "attachments": [
+                    {
+                        "id": "3",
+                        "filename": "image.png",
+                        "size": 1024,
+                        "url": "https://cdn.example/image.png",
+                        "proxy_url": "https://proxy.example/image.png"
+                    }
+                ],
+                "embeds": [{"title": "Embed"}],
+                "sticker_items": [
+                    {"id": "4", "name": "wave", "format_type": 1}
+                ],
+                "components": [
+                    {
+                        "type": 1,
+                        "components": [
+                            {"type": 2, "style": 1, "custom_id": "confirm", "label": "Confirm"}
+                        ]
+                    }
+                ],
+                "poll": {
+                    "question": {"text": "Favourite?"},
+                    "answers": [{"answer_id": 1, "poll_media": {"text": "A"}}]
+                },
+                "reactions": [
+                    {
+                        "emoji": {"name": "🎉"},
+                        "count": 2,
+                        "me": true,
+                        "count_details": {"normal": 1, "burst": 1}
+                    }
+                ],
+                "reference": {
+                    "type": 0,
+                    "message_id": "9",
+                    "channel_id": "20",
+                    "guild_id": "100"
+                },
+                "webhook_id": "40",
+                "application_id": "41",
+                "interaction": {
+                    "id": "50",
+                    "type": 2,
+                    "name": "command",
+                    "user": {"id": "1", "username": "winter"}
+                },
+                "interaction_metadata": {
+                    "id": "50",
+                    "type": 2,
+                    "user": {"id": "1", "username": "winter"},
+                    "authorizing_integration_owners": {"0": "100", "1": "1"},
+                    "original_response_message_id": "51",
+                    "interacted_message_id": "52",
+                    "target_user": {"id": "2", "username": "target"},
+                    "target_message_id": "53"
+                },
+                "position": 3,
+                "nonce": 12345
+            }"#,
+        )
+        .unwrap();
+
+        let message = Message::from_value(&value).unwrap();
+
+        assert_eq!(message.id, Snowflake::new(10));
+        assert_eq!(message.channel_id, Snowflake::new(20));
+        assert_eq!(message.guild_id, Some(Snowflake::new(100)));
+        assert!(message.author.is_member());
+        assert_eq!(message.author.id(), Snowflake::new(1));
+        assert_eq!(message.author.display_name(), "Frost");
+        let member = message.author.as_member().unwrap();
+        assert_eq!(member.guild_id, Snowflake::new(100));
+        assert_eq!(member.roles.len(), 1);
+        assert_eq!(member.roles[0].id, Snowflake::new(10));
+        assert_eq!(member.roles[0].name, "");
+
+        assert_eq!(message.content, "Hello <@2>");
+        assert_eq!(
+            message.timestamp,
+            UNIX_EPOCH + Duration::new(1_627_821_296, 0)
+        );
+        assert_eq!(
+            message.edited_timestamp,
+            Some(UNIX_EPOCH + Duration::new(1_627_862_400, 0))
+        );
+        assert!(message.tts);
+        assert!(message.mention_everyone);
+        assert!(message.pinned);
+        assert_eq!(message.message_type, MessageType::Reply);
+        assert_eq!(message.flags, MessageFlags::EPHEMERAL);
+        assert_eq!(message.mentions.len(), 1);
+        assert_eq!(message.mentions[0].id(), Snowflake::new(2));
+        assert_eq!(message.mention_role_ids, [Snowflake::new(10)]);
+        assert_eq!(message.mention_channel_ids, [Snowflake::new(30)]);
+
+        assert_eq!(message.attachments.len(), 1);
+        assert_eq!(message.attachments[0].filename, "image.png");
+        assert_eq!(message.embeds.len(), 1);
+        assert_eq!(message.embeds[0].title.as_deref(), Some("Embed"));
+        assert_eq!(message.sticker_items.len(), 1);
+        assert_eq!(message.sticker_items[0].id, Snowflake::new(4));
+        assert_eq!(message.components.len(), 1);
+        assert_eq!(message.components[0].children.len(), 1);
+
+        let poll = message.poll.as_ref().unwrap();
+        assert_eq!(poll.question_text(), Some("Favourite?"));
+
+        assert_eq!(message.reactions.len(), 1);
+        assert_eq!(message.reactions[0].count, 2);
+        assert!(message.reactions[0].me);
+
+        let reference = message.reference.as_ref().unwrap();
+        assert_eq!(reference.kind, MessageReferenceType::Reply);
+        assert_eq!(reference.message_id, Some(Snowflake::new(9)));
+        assert_eq!(message.webhook_id, Some(Snowflake::new(40)));
+        assert_eq!(message.application_id, Some(Snowflake::new(41)));
+
+        let interaction = message.interaction.as_ref().unwrap();
+        assert_eq!(interaction.id, Snowflake::new(50));
+        assert_eq!(interaction.kind, InteractionType::ApplicationCommand);
+        assert_eq!(interaction.name, "command");
+
+        let metadata = message.interaction_metadata.as_ref().unwrap();
+        assert_eq!(metadata.id, Snowflake::new(50));
+        assert_eq!(metadata.authorizing_integration_owners.len(), 2);
+        assert_eq!(
+            metadata.original_response_message_id,
+            Some(Snowflake::new(51))
+        );
+        assert_eq!(metadata.interacted_message_id, Some(Snowflake::new(52)));
+        assert_eq!(
+            metadata.target_user.as_ref().map(|user| user.id),
+            Some(Snowflake::new(2))
+        );
+        assert_eq!(metadata.target_message_id, Some(Snowflake::new(53)));
+
+        assert_eq!(message.position, Some(3));
+        assert_eq!(message.nonce.as_deref(), Some("12345"));
+    }
+
+    #[test]
+    fn decodes_minimal_messages_and_reports_errors() {
+        let minimal = Message::from_value(
+            &json::from_str(
+                r#"{
+                    "id": "10",
+                    "channel_id": "20",
+                    "author": {"id": "1", "username": "winter"},
+                    "timestamp": "2021-08-01T12:34:56Z"
+                }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(minimal.guild_id, None);
+        assert!(!minimal.author.is_member());
+        assert_eq!(minimal.content, "");
+        assert_eq!(minimal.message_type, MessageType::Default);
+        assert!(minimal.flags.is_empty());
+        assert!(minimal.attachments.is_empty());
+        assert!(minimal.embeds.is_empty());
+        assert!(minimal.poll.is_none());
+        assert!(minimal.reference.is_none());
+        assert!(minimal.interaction.is_none());
+        assert_eq!(minimal.position, None);
+        assert_eq!(minimal.nonce, None);
+
+        let string_nonce = Message::from_value(
+            &json::from_str(
+                r#"{"id":"10","channel_id":"20","author":{"id":"1","username":"winter"},"timestamp":"2021-08-01T12:34:56Z","nonce":"abc"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(string_nonce.nonce.as_deref(), Some("abc"));
+
+        let missing_author = Message::from_value(
+            &json::from_str(r#"{"id":"10","channel_id":"20","timestamp":"2021-08-01T12:34:56Z"}"#)
+                .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(missing_author.to_string(), "missing field `message.author`");
+
+        let bad_author = Message::from_value(
+            &json::from_str(
+                r#"{"id":"10","channel_id":"20","author":"winter","timestamp":"2021-08-01T12:34:56Z"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_author.to_string(),
+            "field `message.author` must be an object"
+        );
+
+        let bad_timestamp = Message::from_value(
+            &json::from_str(
+                r#"{"id":"10","channel_id":"20","author":{"id":"1","username":"winter"},"timestamp":"today"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_timestamp.to_string(),
+            "field `message.timestamp` must be a valid ISO 8601 timestamp"
+        );
+
+        let bad_nonce = Message::from_value(
+            &json::from_str(
+                r#"{"id":"10","channel_id":"20","author":{"id":"1","username":"winter"},"timestamp":"2021-08-01T12:34:56Z","nonce":true}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_nonce.to_string(),
+            "field `message.nonce` must be a string or number"
+        );
+
+        let bad_attachment = Message::from_value(
+            &json::from_str(
+                r#"{"id":"10","channel_id":"20","author":{"id":"1","username":"winter"},"timestamp":"2021-08-01T12:34:56Z","attachments":[{"id":"3"}]}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_attachment.to_string(),
+            "missing field `message.attachments[0].filename`"
+        );
+
+        let bad_channel_mention = Message::from_value(
+            &json::from_str(
+                r#"{"id":"10","channel_id":"20","author":{"id":"1","username":"winter"},"timestamp":"2021-08-01T12:34:56Z","mention_channels":[{"guild_id":"100"}]}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_channel_mention.to_string(),
+            "missing field `message.mention_channels[0].id`"
+        );
     }
 }

@@ -7,9 +7,11 @@
 use std::fmt;
 use std::time::SystemTime;
 
+use data::{Object, Value};
 use enums::PollLayoutType;
 
 use crate::PartialEmoji;
+use crate::cast::{self, CastError};
 
 /// The display data for a poll question or answer.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -44,6 +46,31 @@ impl PollMedia {
     pub fn with_emoji(mut self, emoji: PartialEmoji) -> Self {
         self.emoji = Some(emoji);
         self
+    }
+
+    /// Decodes poll media from a Discord poll media object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "poll_media")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let emoji_path = cast::field_path(path, "emoji");
+        let emoji = cast::optional_object(object, path, "emoji")?
+            .map(|emoji| PartialEmoji::from_object_at(emoji, &emoji_path))
+            .transpose()?;
+        Ok(Self {
+            text: cast::optional_string(object, path, "text")?.map(str::to_owned),
+            emoji,
+        })
     }
 
     /// Returns the displayed text, if any.
@@ -121,6 +148,38 @@ impl PollAnswer {
         self
     }
 
+    /// Decodes an answer from a Discord poll answer object.
+    ///
+    /// Vote counts are carried by [`PollResults`], so the returned answer has
+    /// no votes of its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "poll_answer")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let media_path = cast::field_path(path, "poll_media");
+        let media = PollMedia::from_object_at(
+            cast::required_object(object, path, "poll_media")?,
+            &media_path,
+        )?;
+        Ok(Self {
+            answer_id: cast::required_u32(object, path, "answer_id")?,
+            media,
+            vote_count: 0,
+            self_voted: false,
+        })
+    }
+
     /// Returns the answer's displayed text, if any.
     #[must_use]
     pub fn text(&self) -> Option<&str> {
@@ -168,6 +227,29 @@ impl PollAnswerCount {
         self.me_voted = me_voted;
         self
     }
+
+    /// Decodes an answer count from a Discord poll answer count object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "poll_answer_count")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            id: cast::required_u32(object, path, "id")?,
+            count: cast::required_u32(object, path, "count")?,
+            me_voted: cast::optional_bool(object, path, "me_voted", false)?,
+        })
+    }
 }
 
 /// The results of a poll.
@@ -205,6 +287,34 @@ impl PollResults {
     pub fn add_count(mut self, count: PollAnswerCount) -> Self {
         self.answer_counts.push(count);
         self
+    }
+
+    /// Decodes poll results from a Discord poll results object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "poll_results")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            is_finalized: cast::required_bool(object, path, "is_finalized")?,
+            answer_counts: cast::optional_array_of(
+                object,
+                path,
+                "answer_counts",
+                PollAnswerCount::from_value_at,
+            )?
+            .unwrap_or_default(),
+        })
     }
 
     /// Returns the count for an answer, if present.
@@ -250,6 +360,51 @@ impl Poll {
             question: question.into(),
             ..Self::default()
         }
+    }
+
+    /// Decodes a poll from a Discord poll object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "poll")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        let question_path = cast::field_path(path, "question");
+        let question = PollMedia::from_object_at(
+            cast::required_object(object, path, "question")?,
+            &question_path,
+        )?;
+
+        let results_path = cast::field_path(path, "results");
+        let results = cast::optional_object(object, path, "results")?
+            .map(|results| PollResults::from_object_at(results, &results_path))
+            .transpose()?;
+
+        Ok(Self {
+            question,
+            answers: cast::optional_array_of(object, path, "answers", PollAnswer::from_value_at)?
+                .unwrap_or_default(),
+            expiry: cast::optional_timestamp(object, path, "expiry")?,
+            allow_multiselect: cast::optional_bool(object, path, "allow_multiselect", false)?,
+            layout_type: cast::optional_enum(
+                object,
+                path,
+                "layout_type",
+                "a poll layout type",
+                PollLayoutType::from_value,
+            )?
+            .unwrap_or_default(),
+            results,
+        })
     }
 
     /// Sets when the poll expires.
@@ -375,8 +530,9 @@ impl Poll {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use data::json;
     use enums::PollLayoutType;
 
     use super::{Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
@@ -499,5 +655,89 @@ mod tests {
             Some(Some("B"))
         );
         assert_eq!(finalized.total_votes(), 8);
+    }
+
+    #[test]
+    fn decodes_poll_objects() {
+        let value = json::from_str(
+            r#"{
+                "question": {"text": "Favourite?"},
+                "answers": [
+                    {
+                        "answer_id": 1,
+                        "poll_media": {"text": "A", "emoji": {"name": "🅰️"}}
+                    },
+                    {
+                        "answer_id": 2,
+                        "poll_media": {"text": "B"}
+                    }
+                ],
+                "expiry": "2021-08-01T12:34:56Z",
+                "allow_multiselect": true,
+                "layout_type": 1,
+                "results": {
+                    "is_finalized": true,
+                    "answer_counts": [
+                        {"id": 1, "count": 3, "me_voted": true},
+                        {"id": 2, "count": 5}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let poll = Poll::from_value(&value).unwrap();
+        assert_eq!(poll.question_text(), Some("Favourite?"));
+        assert_eq!(poll.answers().len(), 2);
+        assert_eq!(poll.answers()[0].text(), Some("A"));
+        assert_eq!(
+            poll.answers()[0]
+                .emoji()
+                .and_then(|emoji| emoji.name.as_deref()),
+            Some("🅰️")
+        );
+        assert_eq!(poll.answers()[1].answer_id, 2);
+        assert_eq!(
+            poll.expiry,
+            Some(UNIX_EPOCH + Duration::new(1_627_821_296, 0))
+        );
+        assert!(poll.allow_multiselect);
+        assert_eq!(poll.layout_type, PollLayoutType::Default);
+        assert!(poll.is_finalized());
+        assert_eq!(poll.total_votes(), 8);
+        assert_eq!(poll.victor_answer_id(), Some(2));
+
+        let minimal =
+            Poll::from_value(&json::from_str(r#"{"question":{"text":"Q"}}"#).unwrap()).unwrap();
+        assert_eq!(minimal.answers().len(), 0);
+        assert_eq!(minimal.expiry, None);
+        assert!(!minimal.allow_multiselect);
+        assert_eq!(minimal.results, None);
+
+        let missing_question =
+            Poll::from_value(&json::from_str(r#"{"answers":[]}"#).unwrap()).unwrap_err();
+        assert_eq!(
+            missing_question.to_string(),
+            "missing field `poll.question`"
+        );
+
+        let bad_answer = Poll::from_value(
+            &json::from_str(r#"{"question":{"text":"Q"},"answers":[{"poll_media":{"text":"A"}}]}"#)
+                .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_answer.to_string(),
+            "missing field `poll.answers[0].answer_id`"
+        );
+
+        let bad_results = Poll::from_value(
+            &json::from_str(r#"{"question":{"text":"Q"},"results":{"answer_counts":[]}}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_results.to_string(),
+            "missing field `poll.results.is_finalized`"
+        );
     }
 }

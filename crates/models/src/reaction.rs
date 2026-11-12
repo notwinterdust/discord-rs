@@ -3,7 +3,10 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use data::Value;
+
 use crate::PartialEmoji;
+use crate::cast::{self, CastError};
 
 /// A reaction to a message.
 ///
@@ -68,6 +71,44 @@ impl Reaction {
         self
     }
 
+    /// Decodes a reaction from a Discord reaction object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or a field has
+    /// an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "reaction")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let emoji_path = cast::field_path(path, "emoji");
+        let emoji = PartialEmoji::from_object_at(
+            cast::required_object(object, path, "emoji")?,
+            &emoji_path,
+        )?;
+
+        let count_details_path = cast::field_path(path, "count_details");
+        let (normal_count, burst_count) =
+            match cast::optional_object(object, path, "count_details")? {
+                Some(details) => (
+                    cast::required_u64(details, &count_details_path, "normal")?,
+                    cast::required_u64(details, &count_details_path, "burst")?,
+                ),
+                None => (0, 0),
+            };
+
+        Ok(Self {
+            emoji,
+            count: cast::required_u64(object, path, "count")?,
+            me: cast::required_bool(object, path, "me")?,
+            me_burst: cast::optional_bool(object, path, "me_burst", false)?,
+            normal_count,
+            burst_count,
+        })
+    }
+
     /// Returns whether this reaction uses a custom emoji.
     #[must_use]
     pub const fn is_custom_emoji(&self) -> bool {
@@ -99,6 +140,9 @@ impl Hash for Reaction {
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+
+    use abc::Snowflake;
+    use data::json;
 
     use super::Reaction;
     use crate::PartialEmoji;
@@ -141,5 +185,65 @@ mod tests {
         a.hash(&mut hasher_a);
         b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn decodes_reaction_objects() {
+        let value = json::from_str(
+            r#"{
+                "emoji": {"id": "10", "name": "wave", "animated": true},
+                "count": 5,
+                "me": true,
+                "me_burst": true,
+                "count_details": {"burst": 2, "normal": 3}
+            }"#,
+        )
+        .unwrap();
+
+        let reaction = Reaction::from_value(&value).unwrap();
+        assert_eq!(reaction.count, 5);
+        assert!(reaction.me);
+        assert!(reaction.me_burst);
+        assert_eq!(reaction.normal_count, 3);
+        assert_eq!(reaction.burst_count, 2);
+        assert_eq!(reaction.emoji.id, Some(Snowflake::new(10)));
+        assert!(reaction.is_custom_emoji());
+
+        let unicode = Reaction::from_value(
+            &json::from_str(r#"{"emoji":{"name":"🎉"},"count":1,"me":false}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(unicode.count, 1);
+        assert!(!unicode.me);
+        assert!(!unicode.me_burst);
+        assert_eq!(unicode.normal_count, 0);
+        assert_eq!(unicode.burst_count, 0);
+        assert!(!unicode.is_custom_emoji());
+
+        let missing_me =
+            Reaction::from_value(&json::from_str(r#"{"emoji":{"name":"🎉"},"count":1}"#).unwrap())
+                .unwrap_err();
+        assert_eq!(missing_me.to_string(), "missing field `reaction.me`");
+
+        let bad_emoji = Reaction::from_value(
+            &json::from_str(r#"{"emoji":"🎉","count":1,"me":false}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_emoji.to_string(),
+            "field `reaction.emoji` must be an object"
+        );
+
+        let bad_details = Reaction::from_value(
+            &json::from_str(
+                r#"{"emoji":{"name":"🎉"},"count":1,"me":false,"count_details":{"normal":1}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_details.to_string(),
+            "missing field `reaction.count_details.burst`"
+        );
     }
 }
