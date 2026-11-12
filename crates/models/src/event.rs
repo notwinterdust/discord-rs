@@ -1250,6 +1250,39 @@ impl SubscriptionEvent {
     }
 }
 
+/// The payload of `MESSAGE_POLL_VOTE_ADD` or `MESSAGE_POLL_VOTE_REMOVE` event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MessagePollVote {
+    /// The user ID of the voter.
+    pub user_id: Snowflake,
+    /// The channel containing the message.
+    pub channel_id: Snowflake,
+    /// The message containing the poll.
+    pub message_id: Snowflake,
+    /// The guild ID, if any.
+    pub guild_id: Option<Snowflake>,
+    /// The answer ID that was voted for.
+    pub answer_id: u32,
+}
+
+impl MessagePollVote {
+    /// Decodes a `MESSAGE_POLL_VOTE_ADD` or `MESSAGE_POLL_VOTE_REMOVE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "message_poll_vote")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            user_id: cast::required_snowflake(object, path, "user_id")?,
+            channel_id: cast::required_snowflake(object, path, "channel_id")?,
+            message_id: cast::required_snowflake(object, path, "message_id")?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            answer_id: cast::required_u32(object, path, "answer_id")?,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -1364,6 +1397,10 @@ pub enum Event {
     SubscriptionUpdate(SubscriptionEvent),
     /// A premium subscription was deleted.
     SubscriptionDelete(SubscriptionEvent),
+    /// A poll vote was added.
+    MessagePollVoteAdd(MessagePollVote),
+    /// A poll vote was removed.
+    MessagePollVoteRemove(MessagePollVote),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -1529,6 +1566,8 @@ impl Event {
             "SUBSCRIPTION_CREATE" => Ok(Self::SubscriptionCreate(SubscriptionEvent::from_value(data)?)),
             "SUBSCRIPTION_UPDATE" => Ok(Self::SubscriptionUpdate(SubscriptionEvent::from_value(data)?)),
             "SUBSCRIPTION_DELETE" => Ok(Self::SubscriptionDelete(SubscriptionEvent::from_value(data)?)),
+            "MESSAGE_POLL_VOTE_ADD" => Ok(Self::MessagePollVoteAdd(MessagePollVote::from_value(data)?)),
+            "MESSAGE_POLL_VOTE_REMOVE" => Ok(Self::MessagePollVoteRemove(MessagePollVote::from_value(data)?)),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -1619,6 +1658,8 @@ impl Event {
             Self::SubscriptionCreate(_) => "SUBSCRIPTION_CREATE",
             Self::SubscriptionUpdate(_) => "SUBSCRIPTION_UPDATE",
             Self::SubscriptionDelete(_) => "SUBSCRIPTION_DELETE",
+            Self::MessagePollVoteAdd(_) => "MESSAGE_POLL_VOTE_ADD",
+            Self::MessagePollVoteRemove(_) => "MESSAGE_POLL_VOTE_REMOVE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
