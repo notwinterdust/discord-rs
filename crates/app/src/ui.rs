@@ -63,6 +63,36 @@ pub struct View {
     timeout_seconds: Option<u64>,
 }
 
+/// Routes component custom IDs to callbacks.
+#[derive(Default)]
+pub struct ComponentRouter {
+    handlers: Vec<(String, Box<dyn FnMut(&str)>)>,
+}
+
+impl ComponentRouter {
+    /// Registers a custom-ID handler.
+    pub fn on(
+        &mut self,
+        custom_id: impl Into<String>,
+        handler: impl FnMut(&str) + 'static,
+    ) {
+        self.handlers.push((custom_id.into(), Box::new(handler)));
+    }
+
+    /// Dispatches a component interaction.
+    pub fn dispatch(&mut self, custom_id: &str) -> bool {
+        let Some((_, handler)) = self
+            .handlers
+            .iter_mut()
+            .find(|(registered, _)| registered == custom_id)
+        else {
+            return false;
+        };
+        handler(custom_id);
+        true
+    }
+}
+
 impl View {
     /// Creates a persistent view.
     #[must_use]

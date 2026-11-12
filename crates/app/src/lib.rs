@@ -6,7 +6,7 @@ use data::{Object, Value};
 
 pub mod ui;
 
-pub use ui::{Component, Modal, View};
+pub use ui::{Component, ComponentRouter, Modal, View};
 
 /// The kind of application command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
