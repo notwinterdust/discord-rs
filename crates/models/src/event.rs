@@ -598,6 +598,35 @@ impl TypingStart {
     }
 }
 
+/// The payload of a `GUILD_BAN_ADD` or `GUILD_BAN_REMOVE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GuildBanEvent {
+    /// The guild the ban was created or removed in.
+    pub guild_id: Snowflake,
+    /// The banned or unbanned user.
+    pub user: User,
+}
+
+impl GuildBanEvent {
+    /// Decodes a ban event payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or malformed.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "guild_ban")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let user_path = cast::field_path(path, "user");
+        Ok(Self {
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            user: User::from_object_at(cast::required_object(object, path, "user")?, &user_path)?,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -654,6 +683,12 @@ pub enum Event {
     MessageReactionRemoveAll(ReactionRemoveAll),
     /// All reactions with one emoji were removed from a message.
     MessageReactionRemoveEmoji(ReactionRemoveEmoji),
+    /// A user was banned from a guild.
+    GuildBanAdd(GuildBanEvent),
+    /// A user was unbanned from a guild.
+    GuildBanRemove(GuildBanEvent),
+    /// An audit log entry was created.
+    GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
     InteractionCreate(Interaction),
     /// An invite was created.
@@ -753,6 +788,11 @@ impl Event {
             "MESSAGE_REACTION_REMOVE_EMOJI" => Ok(Self::MessageReactionRemoveEmoji(
                 ReactionRemoveEmoji::from_value(data)?,
             )),
+            "GUILD_BAN_ADD" => Ok(Self::GuildBanAdd(GuildBanEvent::from_value(data)?)),
+            "GUILD_BAN_REMOVE" => Ok(Self::GuildBanRemove(GuildBanEvent::from_value(data)?)),
+            "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
+                crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
+            )),
             "INTERACTION_CREATE" => Ok(Self::InteractionCreate(Interaction::from_value(data)?)),
             "INVITE_CREATE" => Ok(Self::InviteCreate(Invite::from_value(data)?)),
             "INVITE_DELETE" => Ok(Self::InviteDelete(Invite::from_value(data)?)),
@@ -810,6 +850,9 @@ impl Event {
             Self::MessageReactionRemove(_) => "MESSAGE_REACTION_REMOVE",
             Self::MessageReactionRemoveAll(_) => "MESSAGE_REACTION_REMOVE_ALL",
             Self::MessageReactionRemoveEmoji(_) => "MESSAGE_REACTION_REMOVE_EMOJI",
+            Self::GuildBanAdd(_) => "GUILD_BAN_ADD",
+            Self::GuildBanRemove(_) => "GUILD_BAN_REMOVE",
+            Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
             Self::InviteDelete(_) => "INVITE_DELETE",
@@ -1391,6 +1434,49 @@ mod tests {
             Event::GuildScheduledEventUserRemove(subscriber)
                 if subscriber.user.id == Snowflake::new(6)
         ));
+    }
+
+    #[test]
+    fn decodes_moderation_events() {
+        let ban_raw = r#"{
+            "guild_id": "100",
+            "user": {
+                "id": "200",
+                "username": "banned_user"
+            }
+        }"#;
+
+        match event("GUILD_BAN_ADD", ban_raw) {
+            Event::GuildBanAdd(ban) => {
+                assert_eq!(ban.guild_id, Snowflake::new(100));
+                assert_eq!(ban.user.id, Snowflake::new(200));
+                assert_eq!(ban.user.name, "banned_user");
+            }
+            other => panic!("expected GuildBanAdd, got {other:?}"),
+        }
+
+        match event("GUILD_BAN_REMOVE", ban_raw) {
+            Event::GuildBanRemove(ban) => {
+                assert_eq!(ban.guild_id, Snowflake::new(100));
+                assert_eq!(ban.user.id, Snowflake::new(200));
+            }
+            other => panic!("expected GuildBanRemove, got {other:?}"),
+        }
+
+        let audit_log_raw = r#"{
+            "id": "500",
+            "guild_id": "100",
+            "action_type": 1,
+            "user_id": "200"
+        }"#;
+
+        match event("GUILD_AUDIT_LOG_ENTRY_CREATE", audit_log_raw) {
+            Event::GuildAuditLogEntryCreate(entry) => {
+                assert_eq!(entry.id, Snowflake::new(500));
+                assert_eq!(entry.user_id, Some(Snowflake::new(200)));
+            }
+            other => panic!("expected GuildAuditLogEntryCreate, got {other:?}"),
+        }
     }
 
     #[test]
