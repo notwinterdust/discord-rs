@@ -1,6 +1,12 @@
 [package]
-name = "app"
-version = "0.1.0"
-edition = "2024"
+name = "discord-rust-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Application commands, typed command options, interactions, and UI components for discord-rust."
 
 [dependencies]
+data = { package = "discord-rust-data", path = "../data", version = "0.1.0" }
+enums = { package = "discord-rust-enums", path = "../enums", version = "0.1.0" }

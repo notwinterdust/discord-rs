@@ -1,6 +1,10 @@
 [package]
-name = "abc"
-version = "0.1.0"
-edition = "2024"
+name = "discord-rust-abc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Abstract base components, snowflakes, colours, and CDN asset helpers for discord-rust."
 
 [dependencies]

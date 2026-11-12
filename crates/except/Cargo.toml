@@ -1,6 +1,10 @@
 [package]
-name = "except"
-version = "0.1.0"
-edition = "2024"
+name = "discord-rust-except"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Granular error hierarchy and exception types for discord-rust."
 
 [dependencies]

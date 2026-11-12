@@ -1,6 +1,10 @@
 [package]
-name = "voice"
-version = "0.1.0"
-edition = "2024"
+name = "discord-rust-voice"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Discord voice gateway connection, encryption traits, audio source scaling, and RTP packet handling for discord-rust."
 
 [dependencies]
