@@ -15,6 +15,27 @@ pub struct VoicePacket {
     pub payload: Vec<u8>,
 }
 
+/// Negotiated voice session metadata.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VoiceSession {
+    /// Voice server endpoint.
+    pub endpoint: Option<String>,
+    /// Session identifier.
+    pub session_id: Option<String>,
+    /// Negotiated secret key.
+    pub secret_key: Option<Vec<u8>>,
+}
+
+impl VoiceSession {
+    /// Returns whether the session has completed negotiation.
+    #[must_use]
+    pub fn is_ready(&self) -> bool {
+        self.endpoint.is_some()
+            && self.session_id.is_some()
+            && self.secret_key.as_ref().is_some_and(|key| !key.is_empty())
+    }
+}
+
 impl VoicePacket {
     /// Creates a packet.
     #[must_use]
