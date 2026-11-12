@@ -76,7 +76,7 @@ pub use enums::{
     StickerType, TextStyle, ThreadMemberFlags, VerificationLevel, VideoQualityMode, WebhookType,
 };
 pub use event::{
-    Dispatch, Event, GuildMemberRemove, MessageDelete, MessageDeleteBulk, ReactionEvent,
+    Dispatch, Event, GuildMemberRemove, MessageDelete, MessageDeleteBulk, RawEvent, ReactionEvent,
     ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete, RoleEvent, ThreadDelete,
     TypingStart, UnavailableGuild, WebhooksUpdate,
 };

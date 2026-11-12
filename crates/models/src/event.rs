@@ -29,6 +29,29 @@ pub struct Dispatch {
     pub data: Value,
 }
 
+/// A dispatch event preserved without typed decoding.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RawEvent {
+    /// The event name.
+    pub name: String,
+    /// The optional sequence number.
+    pub sequence: Option<u64>,
+    /// The original event data.
+    pub data: Value,
+}
+
+impl RawEvent {
+    /// Creates a raw event.
+    #[must_use]
+    pub fn new(name: impl Into<String>, sequence: Option<u64>, data: Value) -> Self {
+        Self {
+            name: name.into(),
+            sequence,
+            data,
+        }
+    }
+}
+
 impl Dispatch {
     /// Extracts a dispatch from a gateway payload.
     ///
