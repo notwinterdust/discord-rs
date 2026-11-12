@@ -73,6 +73,24 @@ impl Webhook {
         self.edit_message_path(message_id)
     }
 
+    /// Returns the path for fetching a specific webhook message.
+    #[must_use]
+    pub fn fetch_message_path(&self, message_id: u64) -> String {
+        self.edit_message_path(message_id)
+    }
+
+    /// Returns the base endpoint path for editing this webhook.
+    #[must_use]
+    pub fn edit_path(&self) -> String {
+        self.execute_path()
+    }
+
+    /// Returns the base endpoint path for deleting this webhook.
+    #[must_use]
+    pub fn delete_path(&self) -> String {
+        self.execute_path()
+    }
+
     /// Builds a message request payload in the project JSON representation.
     #[must_use]
     pub fn message(&self, message: WebhookMessage) -> String {
@@ -152,4 +170,49 @@ fn escape_json(value: &str) -> String {
             other => vec![other],
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn webhook_paths_and_message_encoding() {
+        let wh = Webhook::new(12345, "secret_token");
+        assert_eq!(wh.execute_path(), "webhooks/12345/secret_token");
+        assert_eq!(wh.edit_path(), "webhooks/12345/secret_token");
+        assert_eq!(wh.delete_path(), "webhooks/12345/secret_token");
+        assert_eq!(
+            wh.edit_message_path(6789),
+            "webhooks/12345/secret_token/messages/6789"
+        );
+        assert_eq!(
+            wh.fetch_message_path(6789),
+            "webhooks/12345/secret_token/messages/6789"
+        );
+        assert_eq!(
+            wh.delete_message_path(6789),
+            "webhooks/12345/secret_token/messages/6789"
+        );
+
+        let msg = WebhookMessage::new().with_content("hello\nworld").silent(true);
+        let encoded = wh.message(msg);
+        assert!(encoded.contains("\"content\":\"hello\\nworld\""));
+        assert!(encoded.contains("\"silent\":true"));
+    }
+
+    #[test]
+    fn multipart_body_assembly() {
+        let mut mp = Multipart::new("xyzBoundary");
+        mp.field("username", "TestBot");
+        mp.file("payload_json", "message.json", "application/json", b"{}");
+        let (content_type, body) = mp.finish();
+
+        assert_eq!(content_type, "multipart/form-data; boundary=xyzBoundary");
+        let body_str = String::from_utf8_lossy(&body);
+        assert!(body_str.contains("--xyzBoundary\r\n"));
+        assert!(body_str.contains("name=\"username\""));
+        assert!(body_str.contains("TestBot"));
+        assert!(body_str.contains("--xyzBoundary--\r\n"));
+    }
 }
