@@ -16,7 +16,8 @@ A Discord bot manages:
 
 `discord-rust` provides dedicated worker architectures:
 - Independent background threads for gateway connections and heartbeats.
-- Thread-safe non-blocking channels for event routing.
+- A **bounded `ThreadPool`** with configurable worker count for parallel event dispatch.
+- Thread-safe channels for event routing.
 - Worker queues for asynchronous HTTP request execution.
 - Fast compile times and minimal resource overhead.
 
@@ -44,13 +45,13 @@ By decoupling transport details from business logic:
 
 ## Workspace Map
 
-`discord-rust` is composed of 14 modular crates, all exposed through the root umbrella crate:
+`discord-rust` is composed of **15 modular crates**, all exposed through the root umbrella crate:
 
 | Crate | Crates.io Name | Description |
 |---|---|---|
 | **`discord-rust`** | `discord-rust` | Top-level umbrella facade exporting all components |
 | **`abc`** | `discord-rust-abc` | Base types: `Snowflake`, `Colour`, and CDN `Asset` helpers |
-| **`app`** | `discord-rust-app` | Application commands, slash command options, and UI components |
+| **`app`** | `discord-rust-app` | Application commands, slash command options, UI components, and `Paginator` |
 | **`clients`** | `discord-rust-clients` | HTTP REST client, WebSocket gateway, cache, sharding, and bot runner |
 | **`commands`** | `discord-rust-commands` | Command handling, argument parsing, context menus, and cog extensions |
 | **`data`** | `discord-rust-data` | Data models, JSON encoding/decoding, and gateway payload primitives |
@@ -58,10 +59,11 @@ By decoupling transport details from business logic:
 | **`event`** | `discord-rust-event` | Gateway event types, event dispatcher, and filter types |
 | **`except`** | `discord-rust-except` | Granular error hierarchy (`NotFound`, `Forbidden`, `RateLimitedError`, etc.) |
 | **`log`** | `discord-rust-log` | Structured logging framework (`StderrLogger`, `MemoryLogger`) |
+| **`macros`** | `discord-rust-macros` | Procedural `#[command]` attribute macro for zero-boilerplate command definitions |
 | **`models`** | `discord-rust-models` | Strongly-typed Discord domain models (Guilds, Channels, Messages, Users, etc.) |
-| **`util`** | `discord-rust-util` | Percent-encoding and query parameter formatting |
+| **`util`** | `discord-rust-util` | Percent-encoding, query parameter formatting, and bounded `ThreadPool` |
 | **`version`** | `discord-rust-version` | Discord API version constants and endpoint URL builders |
-| **`voice`** | `discord-rust-voice` | Voice gateway connection, RTP packets, and volume source scaling |
+| **`voice`** | `discord-rust-voice` | Voice gateway, RTP packets, `FfmpegSource` audio streaming, and volume scaling |
 | **`webhook`** | `discord-rust-webhook` | Standalone webhook execution and multipart body serialization |
 
 ---

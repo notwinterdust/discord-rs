@@ -25,7 +25,7 @@
           </svg>
         </div>
         <span>discord-rust</span>
-        <span class="version-badge">v0.1.0</span>
+        <span class="version-badge">v0.1.1</span>
       </a>
       <nav class="nav-links">
         <a id="nav-home" class="nav-link active" onclick="showLanding(); return false;">Home</a>
@@ -52,7 +52,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z"/>
         </svg>
-        <span>v0.1.0 Released — Modern Discord Bot Framework</span>
+        <span>v0.1.1 — Pooled Workers, Proc Macros & Audio Streaming</span>
       </div>
       <h1>The Modern Discord Framework for <span>Rust</span></h1>
       <p>
@@ -95,9 +95,10 @@
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
           </div>
-          <h3>High-Performance Concurrency</h3>
+          <h3>Bounded Thread Pool</h3>
           <p>
-            Efficient multi-threaded execution leveraging native worker threads, lockless atomics, and thread-safe channels for maximum throughput and low latency.
+            Fixed-size worker pool with configurable thread count, graceful shutdown, and live introspection.
+            Powers <code>PooledEventDispatcher</code> for concurrent parallel event fan-out across CPU cores.
           </p>
         </div>
 
@@ -122,10 +123,10 @@
               <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
           </div>
-          <h3>Pluggable Transports</h3>
+          <h3>Proc Macro #[command]</h3>
           <p>
-            Gateway and REST connections are decoupled behind traits. Seamlessly plug in native TLS, tungstenite,
-            or mock test harnesses without changing application logic.
+            Annotate any Rust function with <code>#[command]</code> and get a fully-typed
+            <code>CommandDefinition</code> with auto-extracted arguments, aliases, and descriptions — zero boilerplate.
           </p>
         </div>
 
@@ -152,26 +153,25 @@
               <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
             </svg>
           </div>
-          <h3>Thread-Safe LRU Cache</h3>
+          <h3>Cache & Edit Tracking</h3>
           <p>
-            Per-type caching for Guilds, Channels, Members, Users, Roles, and Messages.
-            Automatically populates and invalidates state from incoming Gateway events.
+            Per-type caches for Guilds, Channels, Members, Messages, and Presences.
+            <code>MessageEditTracker</code> bidirectionally maps user commands to bot responses for seamless edit-aware replies.
           </p>
         </div>
 
         <div class="feature-card">
           <div class="feature-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              <path d="M9 18V5l12-2v13"></path>
+              <circle cx="6" cy="18" r="3"></circle>
+              <circle cx="18" cy="16" r="3"></circle>
             </svg>
           </div>
-          <h3>Granular Modularity</h3>
+          <h3>FFmpeg Audio Streaming</h3>
           <p>
-            14 focused sub-crates (models, clients, voice, webhook, app commands, etc.) allow applications
-            to pull only the components they need, or use the unified <code>discord-rust</code> facade.
+            <code>FfmpegSource</code> spawns an <code>ffmpeg</code> child process and streams 48 kHz stereo PCM frames
+            directly into the voice RTP pipeline — files, URLs, or any custom child process.
           </p>
         </div>
       </div>

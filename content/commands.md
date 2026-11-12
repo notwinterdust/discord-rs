@@ -1,8 +1,8 @@
-# Slash Commands & Options
+# Slash Commands, Options & #[command]
 
-Modern Discord bots interact with users primarily through **Application Commands** (Slash Commands, User Context Menus, and Message Context Menus).
+Modern Discord bots interact with users primarily through **Application Commands** (Slash Commands, User Context Menus, and Message Context Menus) and traditional **prefix commands**.
 
-`discord-rust` provides strongly-typed builders for creating, registering, and validating command structures.
+`discord-rust` provides strongly-typed builders for application commands, and the `#[command]` proc macro for effortless prefix command definitions.
 
 ---
 
@@ -85,6 +85,41 @@ let bookmark_msg = ApplicationCommand::message("Bookmark");
 
 ---
 
+## Prefix Commands with `#[command]`
+
+For classic prefix-style bots (`!ping`, `!ban @user`), use the `#[command]` attribute macro from `discord-rust-macros`:
+
+```rust
+use discord_rust::commands::{command, CommandRegistry, Context};
+
+#[command(description = "Add two numbers", aliases = ["plus", "sum"])]
+fn add(ctx: &Context, a: i32, b: i32) {
+    println!("{} + {} = {}", a, b, a + b);
+}
+
+#[command(description = "Ping the bot", aliases = ["p"])]
+fn ping(_ctx: &Context) {
+    println!("Pong!");
+}
+
+fn main() {
+    let mut registry = CommandRegistry::new("!");
+    registry.register(add_command()).unwrap();
+    registry.register(ping_command()).unwrap();
+
+    // Dispatch incoming message text
+    registry.dispatch("!add 15 27");   // → 42
+    registry.dispatch("!ping");        // → Pong!
+    registry.dispatch("!p");           // → Pong! (alias)
+}
+```
+
+The macro generates a `{fn_name}_command()` function returning a `CommandDefinition`. Argument types are extracted automatically using `FromStr` — if parsing fails, the handler returns without panicking.
+
+See the [Proc Macros & #[command]](#macros) guide for the full reference.
+
+---
+
 ## Autocomplete Interactions
 
 To provide dynamic, real-time choices as the user types:
@@ -93,4 +128,5 @@ To provide dynamic, real-time choices as the user types:
 let option = CommandOption::string("game", "Choose a game to play")
     .with_autocomplete(true);
 ```
+
 When the user types, Discord sends an `InteractionType::ApplicationCommandAutocomplete` event, which you can resolve with dynamic choice lists!

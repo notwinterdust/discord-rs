@@ -16,16 +16,18 @@ const DOCS_CATALOG = [
     items: [
       { id: "gateway", title: "Gateway & Event Dispatcher", file: "content/gateway.md" },
       { id: "rest-api", title: "REST API Client & Limits", file: "content/rest-api.md" },
-      { id: "cache", title: "State Cache & LRU Eviction", file: "content/cache.md" },
-      { id: "sharding", title: "Multi-Shard Auto Scaling", file: "content/sharding.md" }
+      { id: "cache", title: "State Cache & Edit Tracking", file: "content/cache.md" },
+      { id: "sharding", title: "Multi-Shard Auto Scaling", file: "content/sharding.md" },
+      { id: "thread-pool", title: "Thread Pool & Pooled Dispatch", file: "content/thread-pool.md" }
     ]
   },
   {
     category: "Features & Components",
     items: [
       { id: "commands", title: "Slash Commands & Options", file: "content/commands.md" },
-      { id: "ui-components", title: "UI Components & Buttons", file: "content/ui-components.md" },
-      { id: "voice", title: "Voice Gateway & Audio", file: "content/voice.md" },
+      { id: "macros", title: "Proc Macros & #[command]", file: "content/macros.md" },
+      { id: "ui-components", title: "UI Components & Paginator", file: "content/ui-components.md" },
+      { id: "voice", title: "Voice & FFmpeg Streaming", file: "content/voice.md" },
       { id: "webhooks", title: "Webhooks Execution", file: "content/webhooks.md" },
       { id: "models", title: "Domain Models & Assets", file: "content/models.md" },
       { id: "logging-errors", title: "Logging & Error Handling", file: "content/logging-errors.md" }

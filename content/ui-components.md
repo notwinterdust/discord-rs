@@ -1,6 +1,6 @@
-# UI Components & Buttons
+# UI Components, Buttons & Pagination
 
-Message components enable rich, interactive interfaces directly inside Discord chats using **Buttons**, **Select Menus**, **Text Inputs**, and **Action Rows**.
+Message components enable rich, interactive interfaces directly inside Discord chats using **Buttons**, **Select Menus**, **Text Inputs**, **Action Rows**, and multi-page **Paginators**.
 
 `discord-rust` validates component constraints at compile-time and runtime.
 
@@ -12,22 +12,12 @@ Every interactive component must reside inside an [`ActionRow`](#). A message ca
 
 ```rust
 use discord_rust::app::ui::{ActionRow, Button};
-use discord_rust::enums::ButtonStyle;
 
-// Build a row with Primary and Danger buttons
-let row = ActionRow::new()
-    .add_button(
-        Button::new("confirm_id", ButtonStyle::Success)
-            .with_label("Accept")
-    )
-    .add_button(
-        Button::new("cancel_id", ButtonStyle::Danger)
-            .with_label("Cancel")
-    )
-    .add_button(
-        Button::link("https://github.com/notwinterdust/discord-rust")
-            .with_label("View Source")
-    );
+// Build a row with Success and Danger buttons
+let mut row = ActionRow::new();
+row.add_button(Button::success("confirm_id", "Accept")).unwrap();
+row.add_button(Button::danger("cancel_id", "Cancel")).unwrap();
+row.add_button(Button::link("https://github.com/notwinterdust/discord-rust", "View Source")).unwrap();
 ```
 
 ---
@@ -36,11 +26,11 @@ let row = ActionRow::new()
 
 | ButtonStyle | Description | Color in Discord |
 |---|---|---|
-| `ButtonStyle::Primary` | Blurple action button | Blurple |
-| `ButtonStyle::Secondary` | Neutral grey button | Grey |
-| `ButtonStyle::Success` | Positive / Confirm action | Green |
-| `ButtonStyle::Danger` | Destructive / Cancel action | Red |
-| `ButtonStyle::Link` | External website hyperlink | Grey with arrow |
+| `Button::primary(id, label)` | Blurple action button | Blurple |
+| `Button::secondary(id, label)` | Neutral grey button | Grey |
+| `Button::success(id, label)` | Positive / Confirm action | Green |
+| `Button::danger(id, label)` | Destructive / Cancel action | Red |
+| `Button::link(url, label)` | External website hyperlink | Grey with arrow |
 
 ---
 
@@ -49,16 +39,66 @@ let row = ActionRow::new()
 Create searchable single- or multi-select dropdown menus:
 
 ```rust
-use discord_rust::app::ui::{SelectMenu, SelectOption};
+use discord_rust::app::ui::{StringSelect, SelectOption};
 
-let select = SelectMenu::text("role_select_id")
-    .with_placeholder("Choose your favorite programming language")
-    .with_min_values(1)
-    .with_max_values(3)
-    .add_option(SelectOption::new("Rust", "lang_rust").with_description("Blazingly fast & safe"))
-    .add_option(SelectOption::new("Python", "lang_python").with_description("Simple & clean"))
-    .add_option(SelectOption::new("TypeScript", "lang_ts").with_description("Typed JavaScript"));
+let mut select = StringSelect::new("role_select_id")
+    .placeholder("Choose your favorite programming language")
+    .min_values(1)
+    .max_values(3);
+
+select.add_option(SelectOption::new("Rust", "lang_rust")).unwrap();
+select.add_option(SelectOption::new("Python", "lang_python")).unwrap();
+select.add_option(SelectOption::new("TypeScript", "lang_ts")).unwrap();
 ```
+
+---
+
+## Paginator
+
+`Paginator<T>` manages multi-page content and generates a navigation `ActionRow` automatically. It handles ⏮ ◀ page indicator ▶ ⏭ buttons with correct disabled states.
+
+```rust
+use discord_rust::app::ui::Paginator;
+
+let pages = vec![
+    "**Page 1** — Introduction to Rust",
+    "**Page 2** — Ownership & Borrowing",
+    "**Page 3** — Traits & Generics",
+];
+
+let mut paginator = Paginator::new(pages)
+    .prefix("help_pages")       // used as custom_id prefix
+    .show_first_last(true);     // include ⏮ ⏭ buttons
+
+// Render the navigation buttons for the current page
+let nav_row = paginator.action_row();
+// Send nav_row alongside your embed/text as a component
+
+// In your interaction handler, forward the custom_id:
+let changed = paginator.handle_interaction("help_pages:next");
+// changed == true → page advanced, re-render
+
+println!("Now on page {}/{}", paginator.current_index() + 1, paginator.total_pages());
+println!("Content: {:?}", paginator.current_page());
+```
+
+### Navigation API
+
+| Method | Description |
+|---|---|
+| `paginator.next()` | Advance one page, returns `true` if changed |
+| `paginator.prev()` | Go back one page, returns `true` if changed |
+| `paginator.first()` | Jump to page 0, returns `true` if changed |
+| `paginator.last()` | Jump to last page, returns `true` if changed |
+| `paginator.go_to(n)` | Jump to index `n`, returns `true` if changed |
+| `paginator.handle_interaction(id)` | Dispatch a button `custom_id` automatically |
+| `paginator.action_row()` | Build the navigation `ActionRow` for current state |
+
+### Button custom_ids
+
+The paginator generates `custom_id` values as `"{prefix}:first"`, `"{prefix}:prev"`, `"{prefix}:next"`, `"{prefix}:last"`, and `"{prefix}:indicator"` (the page counter, always disabled).
+
+Pass incoming interaction `custom_id` strings directly to `handle_interaction` to advance the page and re-render.
 
 ---
 
@@ -68,21 +108,17 @@ Modals are pop-up dialog boxes with text input fields:
 
 ```rust
 use discord_rust::app::ui::TextInput;
-use discord_rust::enums::TextStyle;
 
 // Short single-line input
-let title_input = TextInput::new("feedback_title", TextStyle::Short)
-    .with_label("Title")
-    .with_min_length(5)
-    .with_max_length(100)
-    .with_required(true);
+let title_input = TextInput::short("feedback_title", "Title")
+    .min_length(5)
+    .max_length(100)
+    .required(true);
 
 // Multi-line paragraph input
-let body_input = TextInput::new("feedback_body", TextStyle::Paragraph)
-    .with_label("Your Feedback")
-    .with_placeholder("Tell us what you think...")
-    .with_min_length(10)
-    .with_max_length(1000);
+let body_input = TextInput::paragraph("feedback_body", "Your Feedback")
+    .min_length(10)
+    .max_length(1_000);
 ```
 
 > [!NOTE]
