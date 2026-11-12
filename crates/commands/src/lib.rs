@@ -11,6 +11,38 @@ pub struct Context {
     pub arguments: Vec<String>,
 }
 
+/// A command predicate.
+pub type Check = Box<dyn Fn(&Context) -> bool>;
+
+/// A simple command cooldown.
+#[derive(Clone, Debug)]
+pub struct Cooldown {
+    limit: usize,
+    uses: usize,
+}
+
+impl Cooldown {
+    /// Creates a cooldown with a maximum invocation count.
+    #[must_use]
+    pub const fn new(limit: usize) -> Self {
+        Self { limit, uses: 0 }
+    }
+
+    /// Attempts to consume one invocation.
+    pub fn allow(&mut self) -> bool {
+        if self.uses >= self.limit {
+            return false;
+        }
+        self.uses += 1;
+        true
+    }
+
+    /// Resets the cooldown.
+    pub fn reset(&mut self) {
+        self.uses = 0;
+    }
+}
+
 /// A command handler.
 pub trait Handler {
     /// Handles an invocation.
@@ -75,13 +107,13 @@ impl CommandRegistry {
         let Some(rest) = message.strip_prefix(&self.prefix) else {
             return false;
         };
-        let mut words = rest.split_whitespace();
+        let mut words = tokenize(rest);
         let Some(name) = words.next() else {
             return false;
         };
         let context = Context {
             name: name.to_owned(),
-            arguments: words.map(str::to_owned).collect(),
+            arguments: words.collect(),
         };
         let Some(command) = self.commands.iter_mut().find(|command| {
             command.name == name || command.aliases.iter().any(|alias| alias == name)
@@ -90,6 +122,27 @@ impl CommandRegistry {
         };
         command.handler.call(&context);
         true
+    }
+
+    fn tokenize(input: &str) -> impl Iterator<Item = String> + '_ {
+        let mut values = Vec::new();
+        let mut current = String::new();
+        let mut quoted = false;
+        for character in input.chars() {
+            match character {
+                '"' => quoted = !quoted,
+                character if character.is_whitespace() && !quoted => {
+                    if !current.is_empty() {
+                        values.push(std::mem::take(&mut current));
+                    }
+                }
+                character => current.push(character),
+            }
+        }
+        if !current.is_empty() {
+            values.push(current);
+        }
+        values.into_iter()
     }
 
     /// Returns the configured prefix.
