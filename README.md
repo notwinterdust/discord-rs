@@ -1,4 +1,4 @@
-# discord-rs
+# discord-rust
 
 [![Crates.io](https://img.shields.io/crates/v/discord-rs.svg)](https://crates.io/crates/discord-rs)
 [![Documentation](https://docs.rs/discord-rs/badge.svg)](https://docs.rs/discord-rs)
