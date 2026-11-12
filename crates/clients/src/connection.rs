@@ -11,15 +11,11 @@ use std::fmt;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use data::{
-    GatewayCloseCode, GatewayOpcode, GatewayPayload, GatewayPayloadError,
-};
+use data::{GatewayCloseCode, GatewayOpcode, GatewayPayload, GatewayPayloadError};
 use models::CastError;
 
 use crate::events::{EventDispatcher, GatewayRuntime, GatewayUpdate, RuntimeError};
-use crate::gateway::{
-    GatewayAction, GatewayConfig, GatewayError, GatewayState,
-};
+use crate::gateway::{GatewayAction, GatewayConfig, GatewayError, GatewayState};
 
 /// The longest the loop waits for a frame when no heartbeat is scheduled.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -91,10 +87,7 @@ pub trait GatewayTransport {
     /// # Errors
     ///
     /// Returns [`GatewayTransportError`] when the connection fails.
-    fn recv(
-        &mut self,
-        timeout: Option<Duration>,
-    ) -> Result<GatewayFrame, GatewayTransportError>;
+    fn recv(&mut self, timeout: Option<Duration>) -> Result<GatewayFrame, GatewayTransportError>;
 
     /// Sends one JSON text frame.
     ///
@@ -112,10 +105,7 @@ impl<T: GatewayTransport + ?Sized> GatewayTransport for Box<T> {
         (**self).connect(url)
     }
 
-    fn recv(
-        &mut self,
-        timeout: Option<Duration>,
-    ) -> Result<GatewayFrame, GatewayTransportError> {
+    fn recv(&mut self, timeout: Option<Duration>) -> Result<GatewayFrame, GatewayTransportError> {
         (**self).recv(timeout)
     }
 
@@ -220,11 +210,7 @@ impl<T: GatewayTransport> GatewayConnection<T> {
 
     /// Creates a connection with the given dispatcher.
     #[must_use]
-    pub fn with_dispatcher(
-        config: GatewayConfig,
-        transport: T,
-        events: EventDispatcher,
-    ) -> Self {
+    pub fn with_dispatcher(config: GatewayConfig, transport: T, events: EventDispatcher) -> Self {
         Self {
             runtime: GatewayRuntime::with_dispatcher(config, events),
             transport,
@@ -347,10 +333,7 @@ impl<T: GatewayTransport> GatewayConnection<T> {
     ///
     /// Returns an error when the frame is not a gateway payload, the lifecycle
     /// rejects it, an event is malformed, or a requested action cannot be sent.
-    pub fn handle_text(
-        &mut self,
-        text: &str,
-    ) -> Result<GatewayUpdate, GatewayConnectionError> {
+    pub fn handle_text(&mut self, text: &str) -> Result<GatewayUpdate, GatewayConnectionError> {
         let payload = GatewayPayload::from_json(text)?;
         self.handle_payload(&payload)
     }
@@ -410,10 +393,7 @@ impl<T: GatewayTransport> GatewayConnection<T> {
     /// # Errors
     ///
     /// Returns an error when the heartbeat cannot be sent.
-    pub fn tick(
-        &mut self,
-        now: Instant,
-    ) -> Result<Option<GatewayAction>, GatewayConnectionError> {
+    pub fn tick(&mut self, now: Instant) -> Result<Option<GatewayAction>, GatewayConnectionError> {
         let Some(deadline) = self.next_heartbeat else {
             return Ok(None);
         };
@@ -498,10 +478,7 @@ impl<T: GatewayTransport> GatewayConnection<T> {
         self.connect()
     }
 
-    fn perform_action(
-        &mut self,
-        action: GatewayAction,
-    ) -> Result<(), GatewayConnectionError> {
+    fn perform_action(&mut self, action: GatewayAction) -> Result<(), GatewayConnectionError> {
         match action {
             GatewayAction::Send(payload) => {
                 self.transport.send(&payload.to_json())?;
@@ -559,11 +536,11 @@ mod tests {
     use enums::Intents;
 
     use super::{
-        GatewayFrame, GatewayTransport, GatewayTransportError, GatewayConnection,
-        GatewayConnectionError,
+        GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
+        GatewayTransportError,
     };
-    use models::Event;
     use crate::gateway::{GatewayAction, GatewayConfig, GatewayError, GatewayState};
+    use models::Event;
 
     #[derive(Debug, Default)]
     struct MockTransport {
@@ -587,10 +564,7 @@ mod tests {
             &mut self,
             _timeout: Option<Duration>,
         ) -> Result<GatewayFrame, GatewayTransportError> {
-            Ok(self
-                .frames
-                .pop_front()
-                .unwrap_or(GatewayFrame::Timeout))
+            Ok(self.frames.pop_front().unwrap_or(GatewayFrame::Timeout))
         }
 
         fn send(&mut self, text: &str) -> Result<(), GatewayTransportError> {
@@ -670,9 +644,9 @@ mod tests {
         transport.frames.push_back(GatewayFrame::Text(hello(1_000)));
         transport.frames.push_back(GatewayFrame::Text(ready()));
         transport.frames.push_back(GatewayFrame::Text(message()));
-        transport.frames.push_back(GatewayFrame::Close(
-            GatewayCloseCode::AUTHENTICATION_FAILED,
-        ));
+        transport
+            .frames
+            .push_back(GatewayFrame::Close(GatewayCloseCode::AUTHENTICATION_FAILED));
 
         let mut connection = GatewayConnection::new(config(), transport);
         let received = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -789,10 +763,7 @@ mod tests {
         };
         let mut connection = GatewayConnection::new(config(), transport);
         let error = connection.connect().unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "gateway transport error: connect failed"
-        );
+        assert_eq!(error.to_string(), "gateway transport error: connect failed");
         assert_eq!(connection.runtime().state(), GatewayState::Disconnected);
     }
 

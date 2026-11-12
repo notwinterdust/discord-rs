@@ -68,10 +68,7 @@ impl Webhook {
             .content
             .map(|value| format!("\"{}\"", escape_json(&value)))
             .unwrap_or_else(|| "null".to_owned());
-        format!(
-            "{{\"content\":{content},\"silent\":{}}}",
-            message.silent
-        )
+        format!("{{\"content\":{content},\"silent\":{}}}", message.silent)
     }
 }
 

@@ -57,11 +57,9 @@ impl CommandRegistry {
         handler: impl Handler + 'static,
     ) -> Result<(), &'static str> {
         let name = name.into();
-        if self
-            .commands
-            .iter()
-            .any(|command| command.name == name || command.aliases.iter().any(|alias| alias == &name))
-        {
+        if self.commands.iter().any(|command| {
+            command.name == name || command.aliases.iter().any(|alias| alias == &name)
+        }) {
             return Err("command name already exists");
         }
         self.commands.push(CommandEntry {

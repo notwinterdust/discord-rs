@@ -103,7 +103,12 @@ impl CommandTree {
     /// Encodes all commands as a JSON array.
     #[must_use]
     pub fn to_value(&self) -> Value {
-        Value::Array(self.commands.iter().map(CommandDefinition::to_value).collect())
+        Value::Array(
+            self.commands
+                .iter()
+                .map(CommandDefinition::to_value)
+                .collect(),
+        )
     }
 }
 

@@ -16,3 +16,7 @@ Want to start right away? Head to our QuickStart section.
 
 - Documentation
 - [Official Discord API](https://docs.discord.com/developers/reference)
+
+The workspace is implemented with the Rust standard library only. Transport,
+gateway, model, interaction, command, voice, webhook and logging crates are
+kept separate so applications can depend on only the layers they use.

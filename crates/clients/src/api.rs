@@ -63,8 +63,11 @@ impl<T: Transport> DiscordApi<T> {
         channel_id: u64,
         body: impl Into<Vec<u8>>,
     ) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute(self.client.post(format!("channels/{channel_id}/messages")).with_body(body))
+        self.client.execute(
+            self.client
+                .post(format!("channels/{channel_id}/messages"))
+                .with_body(body),
+        )
     }
 
     /// Deletes a message.
@@ -73,8 +76,7 @@ impl<T: Transport> DiscordApi<T> {
         channel_id: u64,
         message_id: u64,
     ) -> Result<HttpResponse, HttpError> {
-        self.client.execute_delete(format!(
-            "channels/{channel_id}/messages/{message_id}"
-        ))
+        self.client
+            .execute_delete(format!("channels/{channel_id}/messages/{message_id}"))
     }
 }

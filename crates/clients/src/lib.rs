@@ -9,12 +9,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod client;
 pub mod connection;
 pub mod events;
 pub mod gateway;
 pub mod http;
-pub mod api;
 
 pub use api::DiscordApi;
 pub use client::{Client, ClientState, HttpClient, TcpTransport, Transport};

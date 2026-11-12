@@ -95,9 +95,8 @@ impl Transport for TcpTransport {
             request_bytes.extend_from_slice(format!("{name}: {value}\r\n").as_bytes());
         }
         if !body.is_empty() && request.header("content-length").is_none() {
-            request_bytes.extend_from_slice(
-                format!("Content-Length: {}\r\n", body.len()).as_bytes(),
-            );
+            request_bytes
+                .extend_from_slice(format!("Content-Length: {}\r\n", body.len()).as_bytes());
         }
         request_bytes.extend_from_slice(b"\r\n");
         request_bytes.extend_from_slice(body);

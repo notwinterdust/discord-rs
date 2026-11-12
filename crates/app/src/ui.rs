@@ -42,7 +42,10 @@ impl Component {
     #[must_use]
     pub fn to_value(&self) -> Value {
         let mut object = Object::new();
-        object.insert("type", Value::Number(data::Number::from_u64(self.kind as u64)));
+        object.insert(
+            "type",
+            Value::Number(data::Number::from_u64(self.kind as u64)),
+        );
         if let Some(custom_id) = &self.custom_id {
             object.insert("custom_id", Value::String(custom_id.clone()));
         }
