@@ -15,6 +15,7 @@ pub mod connection;
 pub mod events;
 pub mod gateway;
 pub mod http;
+pub mod shard;
 
 pub use api::DiscordApi;
 pub use client::{Client, ClientState, HttpClient, RetryPolicy, TcpTransport, Transport};
@@ -27,3 +28,4 @@ pub use gateway::{
     Gateway, GatewayAction, GatewayConfig, GatewayError, GatewayState, ReconnectPolicy,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse, RateLimit, RateLimitScope};
+pub use shard::Shard;
