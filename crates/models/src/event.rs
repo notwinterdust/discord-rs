@@ -2566,6 +2566,116 @@ mod tests {
     }
 
     #[test]
+    fn decodes_poll_vote_events() {
+        let raw = r#"{"user_id":"1","channel_id":"2","message_id":"3","answer_id":1}"#;
+
+        match event("MESSAGE_POLL_VOTE_ADD", raw) {
+            Event::MessagePollVoteAdd(v) => {
+                assert_eq!(v.user_id, Snowflake::new(1));
+                assert_eq!(v.channel_id, Snowflake::new(2));
+                assert_eq!(v.message_id, Snowflake::new(3));
+                assert_eq!(v.answer_id, 1);
+                assert_eq!(v.guild_id, None);
+            }
+            other => panic!("expected MessagePollVoteAdd, got {other:?}"),
+        }
+
+        let raw_guild = r#"{"user_id":"1","channel_id":"2","message_id":"3","guild_id":"99","answer_id":2}"#;
+        match event("MESSAGE_POLL_VOTE_REMOVE", raw_guild) {
+            Event::MessagePollVoteRemove(v) => {
+                assert_eq!(v.guild_id, Some(Snowflake::new(99)));
+                assert_eq!(v.answer_id, 2);
+            }
+            other => panic!("expected MessagePollVoteRemove, got {other:?}"),
+        }
+
+        // name round-trip
+        assert_eq!(
+            Event::from_value("MESSAGE_POLL_VOTE_ADD", &value(raw)).unwrap().name(),
+            "MESSAGE_POLL_VOTE_ADD"
+        );
+    }
+
+    #[test]
+    fn decodes_guild_members_chunk_event() {
+        let raw = r#"{
+            "guild_id": "10",
+            "members": [{
+                "user": {"id": "20", "username": "user", "discriminator": "0", "global_name": null},
+                "roles": [],
+                "joined_at": "2024-01-01T00:00:00Z",
+                "deaf": false,
+                "mute": false
+            }],
+            "chunk_index": 0,
+            "chunk_count": 1,
+            "not_found": [],
+            "presences": [],
+            "nonce": "test-nonce"
+        }"#;
+
+        match event("GUILD_MEMBERS_CHUNK", raw) {
+            Event::GuildMembersChunk(chunk) => {
+                assert_eq!(chunk.guild_id, Snowflake::new(10));
+                assert_eq!(chunk.chunk_index, 0);
+                assert_eq!(chunk.chunk_count, 1);
+                assert_eq!(chunk.members.len(), 1);
+                assert_eq!(chunk.members[0].user.id, Snowflake::new(20));
+                assert_eq!(chunk.nonce.as_deref(), Some("test-nonce"));
+                assert!(chunk.not_found.is_empty());
+                assert!(chunk.presences.is_empty());
+            }
+            other => panic!("expected GuildMembersChunk, got {other:?}"),
+        }
+
+        // minimal — no optional fields
+        let minimal = r#"{"guild_id":"10","members":[],"chunk_index":0,"chunk_count":1}"#;
+        assert!(matches!(
+            event("GUILD_MEMBERS_CHUNK", minimal),
+            Event::GuildMembersChunk(c) if c.members.is_empty() && c.nonce.is_none()
+        ));
+
+        assert_eq!(
+            Event::from_value("GUILD_MEMBERS_CHUNK", &value(raw)).unwrap().name(),
+            "GUILD_MEMBERS_CHUNK"
+        );
+    }
+
+    #[test]
+    fn decodes_command_permissions_update_event() {
+        let raw = r#"{
+            "id": "5",
+            "application_id": "6",
+            "guild_id": "7",
+            "permissions": [
+                {"id": "8", "type": 2, "permission": true},
+                {"id": "9", "type": 1, "permission": false}
+            ]
+        }"#;
+
+        match event("APPLICATION_COMMAND_PERMISSIONS_UPDATE", raw) {
+            Event::ApplicationCommandPermissionsUpdate(update) => {
+                assert_eq!(update.id, Snowflake::new(5));
+                assert_eq!(update.application_id, Snowflake::new(6));
+                assert_eq!(update.guild_id, Snowflake::new(7));
+                assert_eq!(update.permissions.len(), 2);
+                assert_eq!(update.permissions[0].id, Snowflake::new(8));
+                assert_eq!(update.permissions[0].kind, 2);
+                assert!(update.permissions[0].permission);
+                assert!(!update.permissions[1].permission);
+            }
+            other => panic!("expected ApplicationCommandPermissionsUpdate, got {other:?}"),
+        }
+
+        assert_eq!(
+            Event::from_value("APPLICATION_COMMAND_PERMISSIONS_UPDATE", &value(raw))
+                .unwrap()
+                .name(),
+            "APPLICATION_COMMAND_PERMISSIONS_UPDATE"
+        );
+    }
+
+    #[test]
     fn preserves_unknown_events_and_name_and_data() {
         let raw = value(r#"{"id":"1","future":true}"#);
         match Event::from_value("FUTURE_EVENT", &raw).unwrap() {
