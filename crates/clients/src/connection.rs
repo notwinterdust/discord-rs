@@ -8,7 +8,9 @@
 
 use std::error::Error;
 use std::fmt;
-use std::thread;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use data::{GatewayCloseCode, GatewayOpcode, GatewayPayload, GatewayPayloadError};
@@ -553,6 +555,51 @@ impl<T: GatewayTransport> fmt::Debug for GatewayConnection<T> {
     }
 }
 
+/// A multi-thread coordinator that manages a gateway connection in a background thread.
+pub struct ThreadedCoordinator {
+    shutdown_flag: Arc<AtomicBool>,
+    gateway_handle: Option<JoinHandle<Result<(), GatewayConnectionError>>>,
+}
+
+impl ThreadedCoordinator {
+    /// Spawns a gateway runner closure on a dedicated background thread with graceful shutdown coordination.
+    #[must_use]
+    pub fn spawn<F>(runner: F) -> Self
+    where
+        F: FnOnce(Arc<AtomicBool>) -> Result<(), GatewayConnectionError> + Send + 'static,
+    {
+        let shutdown_flag = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&shutdown_flag);
+
+        let gateway_handle = thread::spawn(move || runner(flag));
+
+        Self {
+            shutdown_flag,
+            gateway_handle: Some(gateway_handle),
+        }
+    }
+
+    /// Signals the background thread to shut down and waits for its termination.
+    pub fn shutdown(&mut self) -> Result<(), GatewayConnectionError> {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.gateway_handle.take() {
+            handle.join().map_err(|_| {
+                GatewayConnectionError::Transport(GatewayTransportError::new(
+                    "gateway worker thread panicked",
+                ))
+            })?
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for ThreadedCoordinator {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
@@ -805,5 +852,27 @@ mod tests {
                 .is_none()
         );
         assert!(connection.poll().unwrap().is_none());
+    }
+
+    #[test]
+    fn threaded_coordinator_manages_lifecycle_and_shutdown() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::thread;
+
+        let ran = Arc::new(AtomicUsize::new(0));
+        let ran_clone = Arc::clone(&ran);
+
+        let mut coordinator = super::ThreadedCoordinator::spawn(move |flag: Arc<AtomicBool>| {
+            while !flag.load(Ordering::SeqCst) {
+                ran_clone.fetch_add(1, Ordering::SeqCst);
+                thread::sleep(Duration::from_millis(5));
+            }
+            Ok(())
+        });
+
+        thread::sleep(Duration::from_millis(25));
+        assert!(coordinator.shutdown().is_ok());
+        assert!(ran.load(Ordering::SeqCst) > 0);
     }
 }
