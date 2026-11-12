@@ -658,6 +658,167 @@ impl Modal {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Multi-page paginator
+// ---------------------------------------------------------------------------
+
+/// An interactive paginator managing multi-page embeds or data with navigation buttons.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Paginator<T> {
+    pages: Vec<T>,
+    current_page: usize,
+    custom_id_prefix: String,
+    show_first_last: bool,
+}
+
+impl<T> Paginator<T> {
+    /// Creates a paginator with the given pages.
+    #[must_use]
+    pub fn new(pages: Vec<T>) -> Self {
+        Self {
+            pages,
+            current_page: 0,
+            custom_id_prefix: "paginator".to_owned(),
+            show_first_last: true,
+        }
+    }
+
+    /// Sets the custom ID prefix used for button interactions.
+    #[must_use]
+    pub fn prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.custom_id_prefix = prefix.into();
+        self
+    }
+
+    /// Sets whether to include First (⏮) and Last (⏭) navigation buttons.
+    #[must_use]
+    pub const fn show_first_last(mut self, show: bool) -> Self {
+        self.show_first_last = show;
+        self
+    }
+
+    /// Returns the current page content, if any pages exist.
+    #[must_use]
+    pub fn current_page(&self) -> Option<&T> {
+        self.pages.get(self.current_page)
+    }
+
+    /// Returns the current 0-based page index.
+    #[must_use]
+    pub const fn current_index(&self) -> usize {
+        self.current_page
+    }
+
+    /// Returns the total number of pages.
+    #[must_use]
+    pub fn total_pages(&self) -> usize {
+        self.pages.len()
+    }
+
+    /// Advances to the next page. Returns `true` if the page changed.
+    pub fn next(&mut self) -> bool {
+        if self.current_page + 1 < self.pages.len() {
+            self.current_page += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Moves to the previous page. Returns `true` if the page changed.
+    pub fn prev(&mut self) -> bool {
+        if self.current_page > 0 {
+            self.current_page -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Jumps to the first page. Returns `true` if the page changed.
+    pub fn first(&mut self) -> bool {
+        if self.current_page != 0 && !self.pages.is_empty() {
+            self.current_page = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Jumps to the last page. Returns `true` if the page changed.
+    pub fn last(&mut self) -> bool {
+        if !self.pages.is_empty() && self.current_page != self.pages.len() - 1 {
+            self.current_page = self.pages.len() - 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Jumps to a specific 0-based page index.
+    pub fn go_to(&mut self, index: usize) -> bool {
+        if index < self.pages.len() && self.current_page != index {
+            self.current_page = index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Handles an incoming component interaction `custom_id`.
+    /// Returns `true` if the paginator handled the action and updated its page.
+    pub fn handle_interaction(&mut self, custom_id: &str) -> bool {
+        let prefix = format!("{}:", self.custom_id_prefix);
+        if let Some(action) = custom_id.strip_prefix(&prefix) {
+            match action {
+                "first" => self.first(),
+                "prev" => self.prev(),
+                "next" => self.next(),
+                "last" => self.last(),
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Generates an [`ActionRow`] with navigation buttons appropriately enabled or disabled.
+    #[must_use]
+    pub fn action_row(&self) -> ActionRow {
+        let mut row = ActionRow::new();
+        let is_first = self.current_page == 0;
+        let is_last = self.pages.is_empty() || self.current_page >= self.pages.len() - 1;
+
+        if self.show_first_last {
+            let _ = row.add_button(
+                Button::secondary(format!("{}:first", self.custom_id_prefix), "⏮")
+                    .disabled(is_first),
+            );
+        }
+
+        let _ = row.add_button(
+            Button::secondary(format!("{}:prev", self.custom_id_prefix), "◀").disabled(is_first),
+        );
+
+        let label = format!("{}/{}", self.current_page + 1, self.pages.len().max(1));
+        let _ = row.add_button(
+            Button::secondary(format!("{}:indicator", self.custom_id_prefix), label).disabled(true),
+        );
+
+        let _ = row.add_button(
+            Button::secondary(format!("{}:next", self.custom_id_prefix), "▶").disabled(is_last),
+        );
+
+        if self.show_first_last {
+            let _ = row.add_button(
+                Button::secondary(format!("{}:last", self.custom_id_prefix), "⏭").disabled(is_last),
+            );
+        }
+
+        row
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,5 +912,38 @@ mod tests {
             assert!(container.add(Value::Null).is_ok());
         }
         assert!(container.add(Value::Null).is_err());
+    }
+
+    #[test]
+    fn paginator_navigation_and_interactions() {
+        let pages = vec!["Page 1", "Page 2", "Page 3"];
+        let mut paginator = Paginator::new(pages).prefix("p");
+
+        assert_eq!(paginator.total_pages(), 3);
+        assert_eq!(paginator.current_index(), 0);
+        assert_eq!(paginator.current_page(), Some(&"Page 1"));
+
+        // First row at start: prev and first disabled
+        let row = paginator.action_row();
+        assert_eq!(row.components.len(), 5);
+
+        // Interaction next
+        assert!(paginator.handle_interaction("p:next"));
+        assert_eq!(paginator.current_index(), 1);
+        assert_eq!(paginator.current_page(), Some(&"Page 2"));
+
+        // Interaction last
+        assert!(paginator.handle_interaction("p:last"));
+        assert_eq!(paginator.current_index(), 2);
+        assert!(!paginator.handle_interaction("p:next")); // already last
+
+        // Interaction prev
+        assert!(paginator.handle_interaction("p:prev"));
+        assert_eq!(paginator.current_index(), 1);
+
+        // Interaction first
+        assert!(paginator.handle_interaction("p:first"));
+        assert_eq!(paginator.current_index(), 0);
+        assert!(!paginator.handle_interaction("p:first")); // already first
     }
 }

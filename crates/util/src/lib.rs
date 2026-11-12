@@ -1,9 +1,9 @@
-//! Shared utilities such as escaping helpers and OAuth URL generation.
-//!
-//! Only the standard library is used, so this crate provides the small pieces
-//! of URL handling that the HTTP layer needs.
+//! Shared utilities such as escaping helpers, OAuth URL generation, and worker thread pools.
 
 #![forbid(unsafe_code)]
+
+pub mod pool;
+pub use pool::{ThreadPool, ThreadPoolBuilder};
 
 const HEX: &[u8; 16] = b"0123456789ABCDEF";
 

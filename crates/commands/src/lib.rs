@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+pub use macros::command;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -82,6 +84,11 @@ impl CommandGroup {
             aliases: aliases.into_iter().map(Into::into).collect(),
             handler: Box::new(handler),
         });
+    }
+
+    /// Mounts a subcommand from a [`CommandDefinition`].
+    pub fn add_subcommand_definition(&mut self, definition: CommandDefinition) {
+        self.add_subcommand(definition.name, definition.aliases, definition.handler);
     }
 
     pub fn dispatch(&mut self, context: &Context) -> bool {
@@ -188,10 +195,48 @@ where
     }
 }
 
+impl Handler for Box<dyn Handler> {
+    fn call(&mut self, context: &Context) {
+        (**self).call(context);
+    }
+}
+
 struct CommandEntry {
     name: String,
     aliases: Vec<String>,
     handler: Box<dyn Handler>,
+}
+
+/// A command definition bundling name, aliases, description, and handler.
+pub struct CommandDefinition {
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub description: Option<String>,
+    pub handler: Box<dyn Handler>,
+}
+
+impl CommandDefinition {
+    /// Creates a new command definition.
+    #[must_use]
+    pub fn new(
+        name: impl Into<String>,
+        aliases: impl IntoIterator<Item = impl Into<String>>,
+        handler: impl Handler + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            aliases: aliases.into_iter().map(Into::into).collect(),
+            description: None,
+            handler: Box::new(handler),
+        }
+    }
+
+    /// Sets the command description.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
 }
 
 /// An extension module (Cog equivalent) for modular bot organization.
@@ -250,6 +295,11 @@ impl CommandRegistry {
         self.add(name, Vec::<String>::new(), move |ctx: &Context| {
             group.dispatch(ctx);
         })
+    }
+
+    /// Registers a command from a [`CommandDefinition`].
+    pub fn register(&mut self, definition: CommandDefinition) -> Result<(), &'static str> {
+        self.add(definition.name, definition.aliases, definition.handler)
     }
 
     /// Loads an extension module.
@@ -439,5 +489,30 @@ mod tests {
         shutdown.store(true, Ordering::Relaxed);
         handle.join().unwrap();
         assert!(counter.load(Ordering::SeqCst) >= 2);
+    }
+
+    #[test]
+    fn proc_macro_command_registration_and_typed_args() {
+        use crate as commands;
+        use std::sync::atomic::AtomicI32;
+
+        static INVOKED_RESULT: AtomicI32 = AtomicI32::new(0);
+
+        #[command(description = "Adds two numbers", aliases = ["plus", "sum"])]
+        fn add(_ctx: &Context, a: i32, b: i32) {
+            INVOKED_RESULT.store(a + b, Ordering::SeqCst);
+        }
+
+        let mut registry = CommandRegistry::new("!");
+        assert!(registry.register(add_command()).is_ok());
+
+        assert!(registry.dispatch("!add 15 27"));
+        assert_eq!(INVOKED_RESULT.load(Ordering::SeqCst), 42);
+
+        assert!(registry.dispatch("!plus 100 50"));
+        assert_eq!(INVOKED_RESULT.load(Ordering::SeqCst), 150);
+
+        assert!(registry.dispatch("!sum 5 3"));
+        assert_eq!(INVOKED_RESULT.load(Ordering::SeqCst), 8);
     }
 }

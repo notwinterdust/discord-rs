@@ -8,8 +8,8 @@ use std::collections::HashMap;
 pub mod ui;
 
 pub use ui::{
-    ActionRow, Button, ButtonStyle, Component, ComponentRouter, Container, Modal, PersistentViews,
-    SelectOption, StringSelect, TextInput, TextInputStyle, View,
+    ActionRow, Button, ButtonStyle, Component, ComponentRouter, Container, Modal, Paginator,
+    PersistentViews, SelectOption, StringSelect, TextInput, TextInputStyle, View,
 };
 
 /// A choice for an application command option.

@@ -2,6 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ffmpeg;
+pub use ffmpeg::{DISCORD_FRAME_SIZE, FfmpegSource};
+
 use std::collections::VecDeque;
 use std::net::{SocketAddr, UdpSocket};
 

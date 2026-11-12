@@ -550,6 +550,145 @@ impl Drop for ThreadedEventDispatcher {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Multi-threaded bounded worker pool dispatcher
+// ---------------------------------------------------------------------------
+
+struct PooledHandlerEntry {
+    filter: EventFilter,
+    handler: std::sync::Arc<dyn Fn(&Event) + Send + Sync + 'static>,
+}
+
+/// A builder for configuring and constructing a [`PooledEventDispatcher`].
+#[derive(Default)]
+pub struct PooledEventDispatcherBuilder {
+    worker_threads: Option<usize>,
+    handlers: Vec<PooledHandlerEntry>,
+}
+
+impl PooledEventDispatcherBuilder {
+    /// Creates a builder initialized with default settings.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            worker_threads: None,
+            handlers: Vec::new(),
+        }
+    }
+
+    /// Configures the number of worker threads in the pool.
+    #[must_use]
+    pub const fn workers(mut self, count: usize) -> Self {
+        self.worker_threads = Some(count);
+        self
+    }
+
+    /// Registers a handler matching the given filter.
+    #[must_use]
+    pub fn on(
+        mut self,
+        filter: impl Into<EventFilter>,
+        handler: impl Fn(&Event) + Send + Sync + 'static,
+    ) -> Self {
+        self.handlers.push(PooledHandlerEntry {
+            filter: filter.into(),
+            handler: std::sync::Arc::new(handler),
+        });
+        self
+    }
+
+    /// Registers a handler matching an event name.
+    #[must_use]
+    pub fn on_name(
+        self,
+        name: impl Into<String>,
+        handler: impl Fn(&Event) + Send + Sync + 'static,
+    ) -> Self {
+        self.on(EventFilter::name(name), handler)
+    }
+
+    /// Registers a handler for all events.
+    #[must_use]
+    pub fn on_any(self, handler: impl Fn(&Event) + Send + Sync + 'static) -> Self {
+        self.on(EventFilter::Any, handler)
+    }
+
+    /// Constructs the [`PooledEventDispatcher`].
+    #[must_use]
+    pub fn build(self) -> PooledEventDispatcher {
+        let threads = self.worker_threads.unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+        });
+        let pool = util::ThreadPool::builder()
+            .num_threads(threads)
+            .name_prefix("event-worker")
+            .build()
+            .expect("failed to spawn event worker pool");
+
+        PooledEventDispatcher {
+            pool: std::sync::Arc::new(pool),
+            handlers: std::sync::Arc::new(self.handlers),
+        }
+    }
+}
+
+/// A multi-threaded event dispatcher powered by a bounded worker thread pool.
+pub struct PooledEventDispatcher {
+    pool: std::sync::Arc<util::ThreadPool>,
+    handlers: std::sync::Arc<Vec<PooledHandlerEntry>>,
+}
+
+impl PooledEventDispatcher {
+    /// Creates a builder for configuration.
+    #[must_use]
+    pub fn builder() -> PooledEventDispatcherBuilder {
+        PooledEventDispatcherBuilder::new()
+    }
+
+    /// Connects this dispatcher to an [`EventDispatcher`], submitting events to the worker pool.
+    pub fn attach_to(&self, dispatcher: &mut EventDispatcher) {
+        let pool = std::sync::Arc::clone(&self.pool);
+        let handlers = std::sync::Arc::clone(&self.handlers);
+        dispatcher.on_any(move |event| {
+            for entry in handlers.iter() {
+                if entry.filter.matches(event) {
+                    let ev = event.clone();
+                    let handler = std::sync::Arc::clone(&entry.handler);
+                    pool.execute(move || {
+                        handler(&ev);
+                    });
+                }
+            }
+        });
+    }
+
+    /// Dispatches an event across the worker thread pool.
+    pub fn dispatch(&self, event: Event) {
+        for entry in self.handlers.iter() {
+            if entry.filter.matches(&event) {
+                let ev = event.clone();
+                let handler = std::sync::Arc::clone(&entry.handler);
+                self.pool.execute(move || {
+                    handler(&ev);
+                });
+            }
+        }
+    }
+
+    /// Returns a reference to the underlying worker thread pool.
+    #[must_use]
+    pub fn pool(&self) -> &util::ThreadPool {
+        &self.pool
+    }
+
+    /// Shuts down the dispatcher's worker thread pool.
+    pub fn shutdown(&self) {
+        self.pool.shutdown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -826,5 +965,39 @@ mod tests {
         dispatcher.shutdown();
 
         assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn pooled_dispatcher_processes_concurrently() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let dispatcher = super::PooledEventDispatcher::builder()
+            .workers(3)
+            .on_name("WORK_EVENT", move |_event| {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            })
+            .build();
+
+        for _ in 0..15 {
+            dispatcher.dispatch(Event::Unknown {
+                name: "WORK_EVENT".to_string(),
+                data: Value::Null,
+            });
+        }
+
+        // Wait for workers to process tasks
+        let start = std::time::Instant::now();
+        while counter.load(Ordering::SeqCst) < 15
+            && start.elapsed() < std::time::Duration::from_secs(2)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        assert_eq!(counter.load(Ordering::SeqCst), 15);
+        dispatcher.shutdown();
     }
 }
