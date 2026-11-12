@@ -9,6 +9,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 use except::HttpError;
+use data::Value;
 use version::USER_AGENT;
 
 use crate::http::{HttpMethod, HttpRequest, HttpResponse};
@@ -201,6 +202,17 @@ pub struct HttpClient<T> {
 }
 
 impl<T: Transport> HttpClient<T> {
+    /// Executes a request with a JSON body encoded by the workspace parser.
+    pub fn execute_json(
+        &self,
+        mut request: HttpRequest,
+        value: &Value,
+    ) -> Result<HttpResponse, HttpError> {
+        request = request
+            .with_header("Content-Type", "application/json")
+            .with_text_body(data::to_string(value));
+        self.execute(request)
+    }
     /// Executes a request with bounded retries for transport and rate-limit errors.
     pub fn execute_with_retry(
         &self,
