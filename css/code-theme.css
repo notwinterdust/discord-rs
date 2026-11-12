@@ -1,1 +1,132 @@
-pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#abb2bf;background:#282c34}.hljs-comment,.hljs-quote{color:#5c6370;font-style:italic}.hljs-doctag,.hljs-formula,.hljs-keyword{color:#c678dd}.hljs-deletion,.hljs-name,.hljs-section,.hljs-selector-tag,.hljs-subst{color:#e06c75}.hljs-literal{color:#56b6c2}.hljs-addition,.hljs-attribute,.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#98c379}.hljs-attr,.hljs-number,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-pseudo,.hljs-template-variable,.hljs-type,.hljs-variable{color:#d19a66}.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-id,.hljs-symbol,.hljs-title{color:#61aeee}.hljs-built_in,.hljs-class .hljs-title,.hljs-title.class_{color:#e6c07b}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-link{text-decoration:underline}
+/**
+ * discord-rust Modern Dark High-Contrast Syntax Theme
+ * Optimized for Rust, JSON, Bash, TOML, and Markdown
+ */
+
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent !important;
+}
+
+code.hljs {
+  padding: 0;
+  background: transparent !important;
+}
+
+.hljs {
+  color: #e2e8f0;
+  background: transparent !important;
+}
+
+/* Keywords (fn, let, mut, pub, use, struct, impl, match, if, return, async, trait) */
+.hljs-keyword,
+.hljs-selector-tag {
+  color: #c084fc;
+  font-weight: 600;
+}
+
+/* Types, Structs, Classes, Enums, Traits (Snowflake, String, Option, Result, Context, u64) */
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_,
+.hljs-built_in {
+  color: #38bdf8;
+  font-weight: 500;
+}
+
+/* Functions, Methods, Calls */
+.hljs-title.function_,
+.hljs-function .hljs-title {
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+/* Strings, Character Literals */
+.hljs-string,
+.hljs-regexp {
+  color: #4ade80;
+}
+
+/* Numbers, Booleans, Literals */
+.hljs-number,
+.hljs-literal {
+  color: #fb923c;
+}
+
+/* Macros, Attributes, Annotations, Meta (#[command], #[derive], assert_eq!, vec!) */
+.hljs-meta,
+.hljs-meta .hljs-keyword,
+.hljs-attr,
+.hljs-attribute {
+  color: #f472b6;
+}
+
+.hljs-meta .hljs-string {
+  color: #86efac;
+}
+
+/* Comments & Documentation */
+.hljs-comment,
+.hljs-quote {
+  color: #64748b;
+  font-style: italic;
+}
+
+.hljs-doctag {
+  color: #a78bfa;
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* Variables, Parameters, Properties */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+  color: #f1f5f9;
+}
+
+/* Symbols, Bullets, Sub-sections */
+.hljs-symbol,
+.hljs-bullet,
+.hljs-selector-id,
+.hljs-section {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+/* Operators, Punctuation */
+.hljs-punctuation,
+.hljs-operator {
+  color: #94a3b8;
+}
+
+/* Diff Additions & Deletions */
+.hljs-addition {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.hljs-deletion {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* Emphasis & Strong */
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.hljs-link {
+  text-decoration: underline;
+  color: #818cf8;
+}
