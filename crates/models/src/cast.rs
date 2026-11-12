@@ -467,6 +467,12 @@ pub(crate) fn required_u32(object: &Object, parent: &str, field: &str) -> Result
     u32(value, &path)
 }
 
+/// Reads a required 16-bit unsigned integer field.
+pub(crate) fn required_u16(object: &Object, parent: &str, field: &str) -> Result<u16, CastError> {
+    let (value, path) = required(object, parent, field)?;
+    u16(value, &path)
+}
+
 /// Reads an optional signed integer field.
 pub(crate) fn optional_i64(
     object: &Object,

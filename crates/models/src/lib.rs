@@ -15,6 +15,8 @@
 //! components and modal submissions according to the interaction type.
 //! Invite, application and webhook payloads decode their partial guild,
 //! channel, application and source models.
+//! Audit log pages decode their entries, typed changes, extra information and
+//! referenced users, webhooks, threads and scheduled events.
 
 #![forbid(unsafe_code)]
 

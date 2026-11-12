@@ -10,11 +10,27 @@ use std::hash::{Hash, Hasher};
 use std::time::SystemTime;
 
 use abc::{HasId, Snowflake};
+use data::{Object, Value};
 use enums::{AuditLogAction, AuditLogActionCategory, AuditLogActionTargetType};
 
+use crate::cast::{self, CastError};
 use crate::{
-    ForumTag, GuildChannel, GuildScheduledEvent, PermissionOverwrite, Role, User, Webhook,
+    ForumTag, GuildChannel, GuildScheduledEvent, PermissionOverwrite, PermissionOverwriteEntry,
+    Role, User, Webhook,
 };
+
+fn decode_array<T>(
+    value: &Value,
+    path: &str,
+    decode: impl Fn(&Value, &str) -> Result<T, CastError>,
+) -> Result<Vec<T>, CastError> {
+    let array = cast::array(value, path)?;
+    array
+        .iter()
+        .enumerate()
+        .map(|(index, value)| decode(value, &cast::index_path(path, index)))
+        .collect()
+}
 
 /// The key naming a field changed by an audit log entry.
 ///
@@ -431,9 +447,128 @@ pub enum AuditLogChangeValue {
     Overwrites(Vec<PermissionOverwrite>),
     /// A list of forum tags.
     ForumTags(Vec<ForumTag>),
+    /// A value this library does not model yet, preserved verbatim.
+    Unknown(Value),
 }
 
 impl AuditLogChangeValue {
+    /// Decodes a change value for the given key.
+    ///
+    /// Discord uses a different JSON shape for each key, so `key` selects the
+    /// variant to decode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the value does not match the key's shape.
+    pub fn from_value(
+        value: &Value,
+        key: &AuditLogChangeKey,
+        guild_id: impl Into<Snowflake>,
+    ) -> Result<Self, CastError> {
+        Self::from_value_at(value, "change", key, guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        key: &AuditLogChangeKey,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        use AuditLogChangeKey::*;
+
+        match key {
+            Name
+            | Description
+            | PreferredLocale
+            | VanityUrlCode
+            | Topic
+            | Code
+            | Permissions
+            | Allow
+            | Deny
+            | UnicodeEmoji
+            | EmojiName
+            | Title
+            | IconHash
+            | SplashHash
+            | DiscoverySplashHash
+            | BannerHash
+            | AvatarHash
+            | Asset
+            | Nick
+            | Region
+            | RtcRegion
+            | CommunicationDisabledUntil => Ok(Self::Text(cast::string(value, path)?.to_owned())),
+            Id
+            | OwnerId
+            | AfkChannelId
+            | RulesChannelId
+            | PublicUpdatesChannelId
+            | WidgetChannelId
+            | SystemChannelId
+            | ApplicationId
+            | ChannelId
+            | InviterId
+            | GuildId
+            | UserId
+            | SoundId => Ok(Self::Snowflake(cast::snowflake(value, path)?)),
+            WidgetEnabled | Nsfw | Hoist | Mentionable | Temporary | Deaf | Mute
+            | EnabledEmoticons | Available | Archived | Locked | Enabled | SingleSelect
+            | Required | InOnboarding => Ok(Self::Boolean(cast::boolean(value, path)?)),
+            AfkTimeout
+            | PruneDeleteDays
+            | Position
+            | Bitrate
+            | RateLimitPerUser
+            | MaxUses
+            | MaxAge
+            | UserLimit
+            | AutoArchiveDuration
+            | DefaultAutoArchiveDuration
+            | DefaultThreadRateLimitPerUser
+            | Flags
+            | Volume
+            | MfaLevel
+            | VerificationLevel
+            | ExplicitContentFilter
+            | DefaultMessageNotifications
+            | Type
+            | ExpireBehavior
+            | VideoQualityMode
+            | PrivacyLevel
+            | Status
+            | EntityType
+            | Color => Ok(Self::Integer(cast::i64(value, path)?)),
+            AppliedTags | DefaultChannelIds => Ok(Self::Snowflakes(decode_array(
+                value,
+                path,
+                cast::snowflake,
+            )?)),
+            Tags => Ok(Self::Strings(decode_array(value, path, |value, path| {
+                Ok(cast::string(value, path)?.to_owned())
+            })?)),
+            Add | Remove => Ok(Self::Roles(decode_array(value, path, |value, path| {
+                Role::from_value_at(value, path, guild_id)
+            })?)),
+            PermissionOverwrites => Ok(Self::Overwrites(decode_array(
+                value,
+                path,
+                |value, path| {
+                    PermissionOverwriteEntry::from_value_at(value, path)
+                        .map(|entry| entry.overwrite)
+                },
+            )?)),
+            AvailableTags => Ok(Self::ForumTags(decode_array(
+                value,
+                path,
+                ForumTag::from_value_at,
+            )?)),
+            Colors | DefaultReactionEmoji | TriggerMetadata | Prompts | Options | Unknown(_) => {
+                Ok(Self::Unknown(value.clone()))
+            }
+        }
+    }
+
     /// Returns the text value, if this is a text value.
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
@@ -528,6 +663,50 @@ pub struct AuditLogChange {
 }
 
 impl AuditLogChange {
+    /// Decodes a change from a Discord audit log change object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when the key is missing or a value does not match
+    /// the key's shape.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "change", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let key = AuditLogChangeKey::from_key(cast::required_string(object, path, "key")?);
+
+        let new_value = match cast::optional(object, path, "new_value") {
+            Some((value, value_path)) => Some(AuditLogChangeValue::from_value_at(
+                value,
+                &value_path,
+                &key,
+                guild_id,
+            )?),
+            None => None,
+        };
+        let old_value = match cast::optional(object, path, "old_value") {
+            Some((value, value_path)) => Some(AuditLogChangeValue::from_value_at(
+                value,
+                &value_path,
+                &key,
+                guild_id,
+            )?),
+            None => None,
+        };
+
+        Ok(Self {
+            key,
+            new_value,
+            old_value,
+        })
+    }
+
     /// Creates a change for the given key.
     #[must_use]
     pub fn new(key: impl Into<AuditLogChangeKey>) -> Self {
@@ -609,6 +788,51 @@ pub struct AuditLogEntryInfo {
 }
 
 impl AuditLogEntryInfo {
+    /// Decodes an entry's extra information from a Discord object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a field has an unexpected type.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "options")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Self::from_object_at(object, path)
+    }
+
+    pub(crate) fn from_object_at(object: &Object, path: &str) -> Result<Self, CastError> {
+        Ok(Self {
+            delete_member_days: cast::optional_string(object, path, "delete_member_days")?
+                .map(str::to_owned),
+            members_removed: cast::optional_string(object, path, "members_removed")?
+                .map(str::to_owned),
+            channel_id: cast::optional_snowflake(object, path, "channel_id")?,
+            message_id: cast::optional_snowflake(object, path, "message_id")?,
+            count: cast::optional_string(object, path, "count")?.map(str::to_owned),
+            id: cast::optional_snowflake(object, path, "id")?,
+            entry_type: cast::optional_string(object, path, "type")?.map(str::to_owned),
+            role_name: cast::optional_string(object, path, "role_name")?.map(str::to_owned),
+            application_id: cast::optional_snowflake(object, path, "application_id")?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            auto_moderation_rule_name: cast::optional_string(
+                object,
+                path,
+                "auto_moderation_rule_name",
+            )?
+            .map(str::to_owned),
+            auto_moderation_rule_trigger_type: cast::optional_string(
+                object,
+                path,
+                "auto_moderation_rule_trigger_type",
+            )?
+            .map(str::to_owned),
+            integration_type: cast::optional_string(object, path, "integration_type")?
+                .map(str::to_owned),
+        })
+    }
+
     /// Sets the channel the action was taken in.
     #[must_use]
     pub fn with_channel_id(mut self, channel_id: impl Into<Snowflake>) -> Self {
@@ -667,6 +891,47 @@ pub struct AuditLogEntry {
 }
 
 impl AuditLogEntry {
+    /// Decodes an entry from a Discord audit log entry object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing, the action is
+    /// unknown, or a change is malformed.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "entry", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+
+        let changes = cast::optional_array_of(object, path, "changes", |value, path| {
+            AuditLogChange::from_value_at(value, path, guild_id)
+        })?
+        .unwrap_or_default();
+
+        let action_path = cast::field_path(path, "action");
+        let action = AuditLogAction::from_value(cast::required_u16(object, path, "action")?)
+            .ok_or_else(|| CastError::invalid_value(&action_path, "an audit log action"))?;
+
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            action,
+            user_id: cast::optional_snowflake(object, path, "user_id")?,
+            target_id: cast::optional_snowflake(object, path, "target_id")?,
+            changes,
+            options: cast::optional_object(object, path, "options")?
+                .map(|options| {
+                    AuditLogEntryInfo::from_object_at(options, &cast::field_path(path, "options"))
+                })
+                .transpose()?,
+            reason: cast::optional_string(object, path, "reason")?.map(str::to_owned),
+        })
+    }
+
     /// Creates an entry for the given action.
     #[must_use]
     pub fn new(id: impl Into<Snowflake>, action: AuditLogAction) -> Self {
@@ -909,6 +1174,48 @@ impl AuditLog {
         }
     }
 
+    /// Decodes an audit log page from a Discord audit log object.
+    ///
+    /// `guild_id` is used for the channels and scheduled events referenced by
+    /// the page, since those objects may omit their guild ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CastError`] when a required field is missing or an entry,
+    /// user, webhook, thread or scheduled event is malformed.
+    pub fn from_value(value: &Value, guild_id: impl Into<Snowflake>) -> Result<Self, CastError> {
+        Self::from_value_at(value, "audit_log", guild_id.into())
+    }
+
+    pub(crate) fn from_value_at(
+        value: &Value,
+        path: &str,
+        guild_id: Snowflake,
+    ) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let (entries_value, entries_path) = cast::required(object, path, "audit_log_entries")?;
+        Ok(Self {
+            entries: decode_array(entries_value, &entries_path, |value, path| {
+                AuditLogEntry::from_value_at(value, path, guild_id)
+            })?,
+            users: cast::optional_array_of(object, path, "users", User::from_value_at)?
+                .unwrap_or_default(),
+            webhooks: cast::optional_array_of(object, path, "webhooks", Webhook::from_value_at)?
+                .unwrap_or_default(),
+            threads: cast::optional_array_of(object, path, "threads", |value, path| {
+                GuildChannel::from_value_at(value, path, guild_id)
+            })?
+            .unwrap_or_default(),
+            scheduled_events: cast::optional_array_of(
+                object,
+                path,
+                "guild_scheduled_events",
+                |value, path| GuildScheduledEvent::from_value_at(value, path, guild_id),
+            )?
+            .unwrap_or_default(),
+        })
+    }
+
     /// Sets the page's entries.
     #[must_use]
     pub fn with_entries(mut self, entries: Vec<AuditLogEntry>) -> Self {
@@ -1021,6 +1328,7 @@ mod tests {
     use std::hash::{Hash, Hasher};
 
     use abc::{HasId, Snowflake};
+    use data::json;
     use enums::{AuditLogAction, AuditLogActionCategory, AuditLogActionTargetType};
 
     use super::{
@@ -1283,6 +1591,301 @@ mod tests {
         assert_eq!(
             AuditLogEntryTarget::Unknown(Snowflake::new(9)).id(),
             Snowflake::new(9)
+        );
+    }
+
+    #[test]
+    fn decodes_audit_log_changes() {
+        let decode =
+            |raw: &str| AuditLogChange::from_value(&json::from_str(raw).unwrap(), 100_u64).unwrap();
+
+        let text = decode(r#"{"key":"name","new_value":"new","old_value":"old"}"#);
+        assert_eq!(text.key, AuditLogChangeKey::Name);
+        assert_eq!(text.new_text(), Some("new"));
+        assert_eq!(text.old_text(), Some("old"));
+
+        let snowflake = decode(r#"{"key":"owner_id","new_value":"2"}"#);
+        assert_eq!(
+            snowflake.new_value,
+            Some(AuditLogChangeValue::Snowflake(Snowflake::new(2)))
+        );
+
+        let boolean = decode(r#"{"key":"nsfw","new_value":true}"#);
+        assert_eq!(boolean.new_value, Some(AuditLogChangeValue::Boolean(true)));
+
+        let integer = decode(r#"{"key":"position","new_value":5}"#);
+        assert_eq!(integer.new_value, Some(AuditLogChangeValue::Integer(5)));
+
+        let snowflakes = decode(r#"{"key":"default_channel_ids","new_value":["1","2"]}"#);
+        assert_eq!(
+            snowflakes
+                .new_value
+                .as_ref()
+                .and_then(AuditLogChangeValue::as_snowflakes),
+            Some([Snowflake::new(1), Snowflake::new(2)].as_slice())
+        );
+
+        let strings = decode(r#"{"key":"tags","new_value":["a","b"]}"#);
+        assert_eq!(
+            strings.new_value,
+            Some(AuditLogChangeValue::Strings(vec![
+                "a".to_owned(),
+                "b".to_owned()
+            ]))
+        );
+
+        let roles = decode(
+            r#"{"key":"$add","new_value":[{"id":"3","name":"Role","color":255,"hoist":true}]}"#,
+        );
+        let role = &roles
+            .new_value
+            .as_ref()
+            .and_then(AuditLogChangeValue::as_roles)
+            .unwrap()[0];
+        assert_eq!(role.id, Snowflake::new(3));
+        assert_eq!(role.name, "Role");
+        assert_eq!(role.guild_id, Snowflake::new(100));
+        assert_eq!(role.colour, abc::Colour::new(255));
+        assert!(role.hoist);
+
+        let overwrites = decode(
+            r#"{"key":"permission_overwrites","new_value":[{"id":"4","type":0,"allow":"8","deny":"16"}]}"#,
+        );
+        let overwrite = &overwrites
+            .new_value
+            .as_ref()
+            .and_then(AuditLogChangeValue::as_overwrites)
+            .unwrap()[0];
+        assert!(
+            overwrite
+                .allow()
+                .contains(enums::Permissions::ADMINISTRATOR)
+        );
+        assert!(!overwrite.deny().is_empty());
+
+        let tags = decode(
+            r#"{"key":"available_tags","new_value":[{"id":"5","name":"tag","moderated":true}]}"#,
+        );
+        let tag = &tags
+            .new_value
+            .as_ref()
+            .and_then(AuditLogChangeValue::as_forum_tags)
+            .unwrap()[0];
+        assert_eq!(tag.id, Snowflake::new(5));
+        assert_eq!(tag.name, "tag");
+        assert!(tag.moderated);
+
+        let colors = decode(r#"{"key":"colors","new_value":{"primary_color":1}}"#);
+        assert_eq!(colors.key, AuditLogChangeKey::Colors);
+        assert!(matches!(
+            colors.new_value,
+            Some(AuditLogChangeValue::Unknown(_))
+        ));
+
+        let unknown = decode(r#"{"key":"future_field","new_value":"x"}"#);
+        assert_eq!(
+            unknown.key,
+            AuditLogChangeKey::Unknown("future_field".to_owned())
+        );
+        assert_eq!(
+            unknown.new_value,
+            Some(AuditLogChangeValue::Unknown(data::Value::from("x")))
+        );
+
+        let missing_key =
+            AuditLogChange::from_value(&json::from_str(r#"{"new_value":"x"}"#).unwrap(), 1_u64)
+                .unwrap_err();
+        assert_eq!(missing_key.to_string(), "missing field `change.key`");
+
+        let bad_value = AuditLogChange::from_value(
+            &json::from_str(r#"{"key":"position","new_value":"nope"}"#).unwrap(),
+            1_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_value.to_string(),
+            "field `change.new_value` must be an integer"
+        );
+    }
+
+    #[test]
+    fn decodes_audit_log_entries_and_info() {
+        let value = json::from_str(
+            r#"{
+                "id": "10",
+                "action": 11,
+                "user_id": "1",
+                "target_id": "5",
+                "changes": [
+                    {"key": "name", "new_value": "renamed", "old_value": "old"},
+                    {"key": "topic", "new_value": "new topic"}
+                ],
+                "options": {
+                    "delete_member_days": "1",
+                    "members_removed": "2",
+                    "channel_id": "5",
+                    "message_id": "6",
+                    "count": "3",
+                    "id": "7",
+                    "type": "member",
+                    "role_name": "Role",
+                    "application_id": "8",
+                    "guild_id": "100",
+                    "auto_moderation_rule_name": "Rule",
+                    "auto_moderation_rule_trigger_type": "keyword",
+                    "integration_type": "discord"
+                },
+                "reason": "because"
+            }"#,
+        )
+        .unwrap();
+
+        let entry = AuditLogEntry::from_value(&value, 100_u64).unwrap();
+        assert_eq!(entry.id, Snowflake::new(10));
+        assert_eq!(entry.action, AuditLogAction::ChannelUpdate);
+        assert_eq!(entry.user_id, Some(Snowflake::new(1)));
+        assert_eq!(entry.target_id, Some(Snowflake::new(5)));
+        assert_eq!(entry.changes.len(), 2);
+        assert_eq!(
+            entry
+                .new_value("name")
+                .and_then(AuditLogChangeValue::as_str),
+            Some("renamed")
+        );
+        assert_eq!(entry.reason.as_deref(), Some("because"));
+
+        let options = entry.options.as_ref().unwrap();
+        assert_eq!(options.delete_member_days.as_deref(), Some("1"));
+        assert_eq!(options.members_removed.as_deref(), Some("2"));
+        assert_eq!(options.channel_id, Some(Snowflake::new(5)));
+        assert_eq!(options.message_id, Some(Snowflake::new(6)));
+        assert_eq!(options.count.as_deref(), Some("3"));
+        assert_eq!(options.id, Some(Snowflake::new(7)));
+        assert_eq!(options.entry_type.as_deref(), Some("member"));
+        assert_eq!(options.role_name.as_deref(), Some("Role"));
+        assert_eq!(options.application_id, Some(Snowflake::new(8)));
+        assert_eq!(options.guild_id, Some(Snowflake::new(100)));
+        assert_eq!(options.auto_moderation_rule_name.as_deref(), Some("Rule"));
+        assert_eq!(
+            options.auto_moderation_rule_trigger_type.as_deref(),
+            Some("keyword")
+        );
+        assert_eq!(options.integration_type.as_deref(), Some("discord"));
+
+        let minimal = AuditLogEntry::from_value(
+            &json::from_str(r#"{"id":"11","action":20}"#).unwrap(),
+            100_u64,
+        )
+        .unwrap();
+        assert_eq!(minimal.action, AuditLogAction::Kick);
+        assert!(minimal.changes.is_empty());
+        assert!(minimal.options.is_none());
+        assert!(minimal.reason.is_none());
+
+        let unknown_action = AuditLogEntry::from_value(
+            &json::from_str(r#"{"id":"11","action":9999}"#).unwrap(),
+            100_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            unknown_action.to_string(),
+            "field `entry.action` must be an audit log action"
+        );
+
+        let bad_change = AuditLogEntry::from_value(
+            &json::from_str(
+                r#"{"id":"11","action":11,"changes":[{"key":"position","new_value":"x"}]}"#,
+            )
+            .unwrap(),
+            100_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_change.to_string(),
+            "field `entry.changes[0].new_value` must be an integer"
+        );
+    }
+
+    #[test]
+    fn decodes_audit_log_pages() {
+        let value = json::from_str(
+            r#"{
+                "audit_log_entries": [
+                    {
+                        "id": "10",
+                        "action": 11,
+                        "user_id": "1",
+                        "target_id": "3",
+                        "changes": [{"key": "name", "new_value": "renamed"}]
+                    }
+                ],
+                "users": [{"id": "1", "username": "moderator"}],
+                "webhooks": [
+                    {"id": "2", "type": 1, "channel_id": "3", "name": "Hook"}
+                ],
+                "threads": [
+                    {"id": "3", "type": 11, "name": "thread", "guild_id": "100"}
+                ],
+                "guild_scheduled_events": [
+                    {
+                        "id": "4",
+                        "guild_id": "100",
+                        "name": "Event",
+                        "entity_type": 2,
+                        "scheduled_start_time": "2021-08-01T12:34:56Z",
+                        "privacy_level": 2,
+                        "status": 1
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let log = AuditLog::from_value(&value, 100_u64).unwrap();
+        assert_eq!(log.entries.len(), 1);
+        assert_eq!(log.entries[0].id, Snowflake::new(10));
+        assert_eq!(log.users.len(), 1);
+        assert_eq!(log.users[0].name, "moderator");
+        assert_eq!(log.webhooks.len(), 1);
+        assert_eq!(log.webhooks[0].name.as_deref(), Some("Hook"));
+        assert_eq!(log.threads.len(), 1);
+        assert_eq!(log.threads[0].guild_id, Snowflake::new(100));
+        assert_eq!(log.scheduled_events.len(), 1);
+        assert_eq!(log.scheduled_events[0].name, "Event");
+        assert_eq!(
+            log.get_entry(10_u64)
+                .and_then(|entry| entry.target(&log))
+                .map(|target| target.id()),
+            Some(Snowflake::new(3))
+        );
+
+        let empty = AuditLog::from_value(
+            &json::from_str(r#"{"audit_log_entries":[]}"#).unwrap(),
+            100_u64,
+        )
+        .unwrap();
+        assert!(empty.entries.is_empty());
+        assert!(empty.users.is_empty());
+        assert!(empty.webhooks.is_empty());
+        assert!(empty.threads.is_empty());
+        assert!(empty.scheduled_events.is_empty());
+
+        let missing_entries =
+            AuditLog::from_value(&json::from_str("{}").unwrap(), 100_u64).unwrap_err();
+        assert_eq!(
+            missing_entries.to_string(),
+            "missing field `audit_log.audit_log_entries`"
+        );
+
+        let bad_thread = AuditLog::from_value(
+            &json::from_str(r#"{"audit_log_entries":[],"threads":[{"id":"3","name":"thread"}]}"#)
+                .unwrap(),
+            100_u64,
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_thread.to_string(),
+            "missing field `audit_log.threads[0].type`"
         );
     }
 }
