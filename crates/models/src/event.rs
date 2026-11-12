@@ -1176,6 +1176,80 @@ impl ChannelPinsUpdate {
     }
 }
 
+/// The payload of an `ENTITLEMENT_CREATE`, `UPDATE`, or `DELETE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EntitlementEvent {
+    /// The entitlement ID.
+    pub id: Snowflake,
+    /// The SKU ID.
+    pub sku_id: Snowflake,
+    /// The application ID.
+    pub application_id: Snowflake,
+    /// The user ID that owns the entitlement.
+    pub user_id: Option<Snowflake>,
+    /// The guild ID that owns the entitlement.
+    pub guild_id: Option<Snowflake>,
+    /// Entitlement type (e.g. 8 for application subscription).
+    pub kind: u8,
+    /// Whether the entitlement was deleted.
+    pub deleted: bool,
+}
+
+impl EntitlementEvent {
+    /// Decodes an entitlement event payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "entitlement")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            sku_id: cast::required_snowflake(object, path, "sku_id")?,
+            application_id: cast::required_snowflake(object, path, "application_id")?,
+            user_id: cast::optional_snowflake(object, path, "user_id")?,
+            guild_id: cast::optional_snowflake(object, path, "guild_id")?,
+            kind: cast::required_u16(object, path, "type")? as u8,
+            deleted: cast::optional_bool(object, path, "deleted", false)?,
+        })
+    }
+}
+
+/// The payload of a `SUBSCRIPTION_CREATE`, `UPDATE`, or `DELETE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubscriptionEvent {
+    /// The subscription ID.
+    pub id: Snowflake,
+    /// The user ID of the subscriber.
+    pub user_id: Snowflake,
+    /// List of SKU IDs subscribed to.
+    pub sku_ids: Vec<Snowflake>,
+    /// Status of the subscription (e.g. 0 for active, 1 for ending, 2 for inactive).
+    pub status: u8,
+}
+
+impl SubscriptionEvent {
+    /// Decodes a subscription event payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "subscription")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let sku_ids = cast::optional_array_of(object, path, "sku_ids", |v, p| {
+            cast::snowflake(v, p)
+        })?
+        .unwrap_or_default();
+
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            user_id: cast::required_snowflake(object, path, "user_id")?,
+            sku_ids,
+            status: cast::required_u16(object, path, "status")? as u8,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -1278,6 +1352,18 @@ pub enum Event {
     ThreadMembersUpdate(ThreadMembersUpdate),
     /// Pinned messages in a channel were updated.
     ChannelPinsUpdate(ChannelPinsUpdate),
+    /// An entitlement was created.
+    EntitlementCreate(EntitlementEvent),
+    /// An entitlement was updated.
+    EntitlementUpdate(EntitlementEvent),
+    /// An entitlement was deleted.
+    EntitlementDelete(EntitlementEvent),
+    /// A premium subscription was created.
+    SubscriptionCreate(SubscriptionEvent),
+    /// A premium subscription was updated.
+    SubscriptionUpdate(SubscriptionEvent),
+    /// A premium subscription was deleted.
+    SubscriptionDelete(SubscriptionEvent),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -1437,6 +1523,12 @@ impl Event {
                 Ok(Self::ThreadMembersUpdate(ThreadMembersUpdate::from_value(data)?))
             }
             "CHANNEL_PINS_UPDATE" => Ok(Self::ChannelPinsUpdate(ChannelPinsUpdate::from_value(data)?)),
+            "ENTITLEMENT_CREATE" => Ok(Self::EntitlementCreate(EntitlementEvent::from_value(data)?)),
+            "ENTITLEMENT_UPDATE" => Ok(Self::EntitlementUpdate(EntitlementEvent::from_value(data)?)),
+            "ENTITLEMENT_DELETE" => Ok(Self::EntitlementDelete(EntitlementEvent::from_value(data)?)),
+            "SUBSCRIPTION_CREATE" => Ok(Self::SubscriptionCreate(SubscriptionEvent::from_value(data)?)),
+            "SUBSCRIPTION_UPDATE" => Ok(Self::SubscriptionUpdate(SubscriptionEvent::from_value(data)?)),
+            "SUBSCRIPTION_DELETE" => Ok(Self::SubscriptionDelete(SubscriptionEvent::from_value(data)?)),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -1521,6 +1613,12 @@ impl Event {
             Self::ThreadMemberUpdate(_) => "THREAD_MEMBER_UPDATE",
             Self::ThreadMembersUpdate(_) => "THREAD_MEMBERS_UPDATE",
             Self::ChannelPinsUpdate(_) => "CHANNEL_PINS_UPDATE",
+            Self::EntitlementCreate(_) => "ENTITLEMENT_CREATE",
+            Self::EntitlementUpdate(_) => "ENTITLEMENT_UPDATE",
+            Self::EntitlementDelete(_) => "ENTITLEMENT_DELETE",
+            Self::SubscriptionCreate(_) => "SUBSCRIPTION_CREATE",
+            Self::SubscriptionUpdate(_) => "SUBSCRIPTION_UPDATE",
+            Self::SubscriptionDelete(_) => "SUBSCRIPTION_DELETE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
