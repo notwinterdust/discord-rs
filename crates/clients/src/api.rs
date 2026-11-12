@@ -79,4 +79,37 @@ impl<T: Transport> DiscordApi<T> {
         self.client
             .execute_delete(format!("channels/{channel_id}/messages/{message_id}"))
     }
+
+    /// Fetches a guild member.
+    pub fn member(&self, guild_id: u64, user_id: u64) -> Result<HttpResponse, HttpError> {
+        self.client
+            .execute_get(format!("guilds/{guild_id}/members/{user_id}"))
+    }
+
+    /// Fetches guild roles.
+    pub fn roles(&self, guild_id: u64) -> Result<HttpResponse, HttpError> {
+        self.client.execute_get(format!("guilds/{guild_id}/roles"))
+    }
+
+    /// Adds a reaction to a message.
+    pub fn add_reaction(
+        &self,
+        channel_id: u64,
+        message_id: u64,
+        emoji: &str,
+    ) -> Result<HttpResponse, HttpError> {
+        self.client.execute_put(format!(
+            "channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me"
+        ))
+    }
+
+    /// Creates a guild channel.
+    pub fn create_channel(
+        &self,
+        guild_id: u64,
+        body: impl Into<Vec<u8>>,
+    ) -> Result<HttpResponse, HttpError> {
+        self.client
+            .execute(self.client.post(format!("guilds/{guild_id}/channels")).with_body(body))
+    }
 }
