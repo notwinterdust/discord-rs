@@ -70,6 +70,33 @@ pub trait AudioSource {
     fn next_frame(&mut self) -> Option<Vec<u8>>;
 }
 
+/// An in-memory audio source.
+#[derive(Clone, Debug, Default)]
+pub struct BufferedSource {
+    frames: VecDeque<Vec<u8>>,
+}
+
+impl BufferedSource {
+    /// Creates an empty source.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            frames: VecDeque::new(),
+        }
+    }
+
+    /// Appends a frame.
+    pub fn push(&mut self, frame: impl Into<Vec<u8>>) {
+        self.frames.push_back(frame.into());
+    }
+}
+
+impl AudioSource for BufferedSource {
+    fn next_frame(&mut self) -> Option<Vec<u8>> {
+        self.frames.pop_front()
+    }
+}
+
 /// A transport capable of sending voice frames.
 pub trait VoiceTransport {
     /// Sends one encoded frame.
