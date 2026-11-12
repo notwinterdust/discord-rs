@@ -83,6 +83,18 @@ pub enum WebSocketFrame {
     Close(GatewayCloseCode),
 }
 
+/// A WebSocket implementation supplied by the host application.
+pub trait WebSocketTransport {
+    /// Opens a WebSocket connection.
+    fn open(&mut self, url: &str) -> Result<(), GatewayTransportError>;
+    /// Receives one frame.
+    fn receive(&mut self) -> Result<WebSocketFrame, GatewayTransportError>;
+    /// Sends one frame.
+    fn send_frame(&mut self, frame: WebSocketFrame) -> Result<(), GatewayTransportError>;
+    /// Closes the connection.
+    fn close(&mut self);
+}
+
 /// Performs gateway I/O for [`GatewayConnection`].
 ///
 /// Implementations own the socket and handle WebSocket framing and TLS. The
