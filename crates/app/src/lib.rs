@@ -76,6 +76,34 @@ pub struct CommandTree {
     commands: Vec<CommandDefinition>,
 }
 
+/// Computes command registration changes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CommandSync {
+    /// Commands that must be created or replaced.
+    pub upsert: Vec<CommandDefinition>,
+    /// Names that should be removed remotely.
+    pub remove: Vec<String>,
+}
+
+impl CommandSync {
+    /// Computes a name-based synchronization plan.
+    #[must_use]
+    pub fn between(current: &CommandTree, desired: &CommandTree) -> Self {
+        let mut sync = Self::default();
+        for command in &desired.commands {
+            if !current.commands.iter().any(|item| item.name == command.name) {
+                sync.upsert.push(command.clone());
+            }
+        }
+        for command in &current.commands {
+            if !desired.commands.iter().any(|item| item.name == command.name) {
+                sync.remove.push(command.name.clone());
+            }
+        }
+        sync
+    }
+}
+
 impl CommandTree {
     /// Creates an empty command tree.
     #[must_use]
