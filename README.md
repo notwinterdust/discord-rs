@@ -26,7 +26,7 @@ A feature-rich, high-performance Discord API and Gateway library for Rust.
 ## Documentation & Wiki
 
 Explore the full interactive documentation, wiki guides, and complete architecture manuals at:
-👉 **[https://discord-rust.netlify.app/](https://discord-rust.netlify.app/)**
+**[https://discord-rust.netlify.app/](https://discord-rust.netlify.app/)**
 
 ---
 
