@@ -1,9 +1,8 @@
-# discord-rs
+# discord-rust
 
-[![Crates.io](https://img.shields.io/crates/v/discord-rs.svg)](https://crates.io/crates/discord-rs)
-[![Documentation](https://docs.rs/discord-rs/badge.svg)](https://docs.rs/discord-rs)
+[![Documentation](https://img.shields.io/badge/docs-discord--rust.netlify.app-5865F2.svg)](https://discord-rust.netlify.app/)
+[![Crates.io](https://img.shields.io/crates/v/discord-rust.svg)](https://crates.io/crates/discord-rust)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Safety: Forbid Unsafe](https://img.shields.io/badge/unsafe-forbidden-success.svg)](crates/)
 
 A feature-rich, high-performance Discord API and Gateway library for Rust.
 
@@ -13,37 +12,48 @@ A feature-rich, high-performance Discord API and Gateway library for Rust.
 
 - **Full Gateway Lifecycle**: Connect, Hello, Identify, Resume, Heartbeat, and automatic reconnection.
 - **Multi-Shard Architecture**: `ShardManager` with automatic shard counting and `ConcurrentShardRuntime`.
-- **LRU In-Memory Cache**: Thread-safe `ClientCache` and `MemberCache` with automatic event invalidation.
-- **Application Commands & UI**: Slash commands, typed options, subcommands, buttons, select menus, and modals.
+- **LRU In-Memory Cache & Edit Tracking**: Thread-safe `ClientCache` and `MessageEditTracker` with automatic event invalidation.
+- **Bounded Worker Thread Pool**: Dedicated `ThreadPool` with `PooledEventDispatcher` for concurrent event fan-out across CPU cores.
+- **Application Commands & Proc Macros**: Slash commands, typed options, subcommands, and `#[command]` attribute macro for prefix commands.
+- **UI Components & Paginator**: Buttons, select menus, modals, and interactive multi-page `Paginator`.
+- **Voice & FFmpeg Streaming**: Voice gateway protocol, RTP packet framing, `FfmpegSource` child process audio streamer, and volume scaling.
 - **Rich Domain Models**: Users, guilds, channels, roles, messages, embeds, presence, automod, stages, soundboard, and monetization.
-- **Voice Support**: Voice gateway protocol, RTP packet framing, and volume scaling pipelines.
 - **Event Ergonomics**: `EventWaiter` for waiting on future matching gateway events with timeouts.
-- **Structured Logging**: Built-in `log` crate with zero third-party dependencies.
+- **Structured Logging**: Built-in structured logging framework with zero third-party runtime dependencies.
+
+---
+
+## Documentation & Wiki
+
+Explore the full interactive documentation, wiki guides, and complete architecture manuals at:
+👉 **[https://discord-rust.netlify.app/](https://discord-rust.netlify.app/)**
 
 ---
 
 ## Installation
 
-Just add `discord-rs` to your `Cargo.toml`:
+Add `discord-rust` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-discord-rs = "0.1.0"
+discord-rust = "0.1.1"
 ```
+
 ---
 
 ## Quickstart: Bot Builder
 
-Here is how to set up and run a bot using the high-level `BotBuilder`:
+For the complete 5-minute interactive tutorial and guide, see the **[Step-by-Step Quickstart on the Docs Site](https://discord-rust.netlify.app/#quickstart)**.
+
+Here is a quick overview of setting up and running a bot with `BotBuilder`:
 
 ```rust,no_run
-use std::time::Duration;
-use discord_rs::{BotBuilder, Event, Intents};
+use discord_rust::{BotBuilder, Event, Intents};
 
 fn main() {
     let mut bot = BotBuilder::new()
         .token("YOUR_BOT_TOKEN")
-        .intents(Intents::default_intents())
+        .intents(Intents::default_intents() | Intents::MESSAGE_CONTENT)
         .on_event(|event| {
             match event {
                 Event::MessageCreate(msg) => {
@@ -65,6 +75,8 @@ fn main() {
     }
 }
 ```
+
+Learn more in the **[BotBuilder & Lifecycle Guide](https://discord-rust.netlify.app/#bot-builder)** or visit the **[Live Documentation](https://discord-rust.netlify.app/)**.
 
 ---
 
