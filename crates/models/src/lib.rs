@@ -77,9 +77,10 @@ pub use enums::{
 };
 pub use event::names;
 pub use event::{
-    Dispatch, Event, GuildMemberRemove, MessageDelete, MessageDeleteBulk, RawEvent, ReactionEvent,
-    ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete, RoleEvent, ThreadDelete,
-    TypingStart, UnavailableGuild, WebhooksUpdate,
+    CommandPermission, CommandPermissionsUpdate, Dispatch, Event, GuildMemberRemove,
+    GuildMembersChunk, MessageDelete, MessageDeleteBulk, MessagePollVote, PresenceUpdate,
+    RawEvent, ReactionEvent, ReactionRemoveAll, ReactionRemoveEmoji, ReadyEvent, RoleDelete,
+    RoleEvent, ThreadDelete, TypingStart, UnavailableGuild, WebhooksUpdate,
 };
 pub use forum::ForumTag;
 pub use guild::Guild;

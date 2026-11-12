@@ -20,7 +20,7 @@ pub mod http;
 pub mod shard;
 
 pub use api::DiscordApi;
-pub use cache::Cache;
+pub use cache::{Cache, CacheConfig, ClientCache, MemberCache};
 pub use client::{
     Client, ClientState, HttpClient, PendingResponse, RetryPolicy, SecureTransport, TcpTransport,
     ThreadedRequestExecutor, Transport,
