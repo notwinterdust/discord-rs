@@ -2,9 +2,35 @@
 members = [".", "crates/*"]
 resolver = "3"
 
-[package]
-name = "discord-rs"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["notwinterdust <notwinterdust@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/notwinterdust/discord-rs"
+
+[package]
+name = "discord-rs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A feature-rich, standard-library-only Discord API and Gateway library for Rust."
+readme = "README.md"
 
 [dependencies]
+abc = { path = "crates/abc", version = "0.1.0" }
+app = { path = "crates/app", version = "0.1.0" }
+clients = { path = "crates/clients", version = "0.1.0" }
+commands = { path = "crates/commands", version = "0.1.0" }
+data = { path = "crates/data", version = "0.1.0" }
+enums = { path = "crates/enums", version = "0.1.0" }
+event = { path = "crates/event", version = "0.1.0" }
+except = { path = "crates/except", version = "0.1.0" }
+log = { path = "crates/log", version = "0.1.0" }
+models = { path = "crates/models", version = "0.1.0" }
+util = { path = "crates/util", version = "0.1.0" }
+version = { path = "crates/version", version = "0.1.0" }
+voice = { path = "crates/voice", version = "0.1.0" }
+webhook = { path = "crates/webhook", version = "0.1.0" }

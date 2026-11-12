@@ -1,12 +1,16 @@
 [package]
 name = "clients"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTP REST client, WebSocket gateway connection, sharding manager, cache, and bot runner for discord-rs."
 
 [dependencies]
-data = { path = "../data" }
-enums = { path = "../enums" }
-except = { path = "../except" }
-models = { path = "../models" }
-util = { path = "../util" }
-version = { path = "../version" }
+data = { path = "../data", version = "0.1.0" }
+enums = { path = "../enums", version = "0.1.0" }
+except = { path = "../except", version = "0.1.0" }
+models = { path = "../models", version = "0.1.0" }
+util = { path = "../util", version = "0.1.0" }
+version = { path = "../version", version = "0.1.0" }

@@ -1,9 +1,13 @@
 [package]
 name = "models"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Strongly-typed Discord domain models and JSON decoding for discord-rs."
 
 [dependencies]
-abc = { path = "../abc" }
-data = { path = "../data" }
-enums = { path = "../enums" }
+abc = { path = "../abc", version = "0.1.0" }
+data = { path = "../data", version = "0.1.0" }
+enums = { path = "../enums", version = "0.1.0" }

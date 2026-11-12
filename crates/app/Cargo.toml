@@ -1,8 +1,12 @@
 [package]
 name = "app"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Application commands, typed command options, interactions, and UI components for discord-rs."
 
 [dependencies]
-data = { path = "../data" }
-enums = { path = "../enums" }
+data = { path = "../data", version = "0.1.0" }
+enums = { path = "../enums", version = "0.1.0" }

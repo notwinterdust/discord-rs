@@ -1,6 +1,10 @@
 [package]
 name = "commands"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command handling, argument parsing, context menus, and cog extension primitives for discord-rs."
 
 [dependencies]

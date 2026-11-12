@@ -1,7 +1,11 @@
 [package]
 name = "event"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Gateway event types, dispatcher, and event filters for discord-rs."
 
 [dependencies]
-models = { path = "../models" }
+models = { path = "../models", version = "0.1.0" }
