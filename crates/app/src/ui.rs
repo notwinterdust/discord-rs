@@ -1,6 +1,7 @@
 //! Interaction component composition primitives.
 
 use data::{Object, Value};
+use std::collections::HashMap;
 
 /// A component that can be sent in an interaction response.
 #[derive(Clone, Debug, PartialEq)]
@@ -67,6 +68,30 @@ pub struct View {
 #[derive(Default)]
 pub struct ComponentRouter {
     handlers: Vec<(String, Box<dyn FnMut(&str)>)>,
+}
+
+/// Stores views that can survive a process-level restart boundary.
+#[derive(Clone, Debug, Default)]
+pub struct PersistentViews {
+    views: HashMap<String, View>,
+}
+
+impl PersistentViews {
+    /// Registers a persistent view.
+    pub fn insert(&mut self, name: impl Into<String>, view: View) {
+        self.views.insert(name.into(), view);
+    }
+
+    /// Retrieves a persistent view.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&View> {
+        self.views.get(name)
+    }
+
+    /// Removes a persistent view.
+    pub fn remove(&mut self, name: &str) -> Option<View> {
+        self.views.remove(name)
+    }
 }
 
 impl ComponentRouter {
