@@ -28,7 +28,10 @@ pub use connection::{
     GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
     GatewayTransportError, WebSocketFrame, WebSocketTransport,
 };
-pub use events::{EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, RuntimeError};
+pub use events::{
+    EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, RuntimeError,
+    ThreadedEventDispatcher, ThreadedEventDispatcherBuilder,
+};
 pub use gateway::{
     Gateway, GatewayAction, GatewayConfig, GatewayError, GatewayState, ReconnectPolicy,
 };

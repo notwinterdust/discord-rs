@@ -7,6 +7,8 @@
 
 use std::error::Error;
 use std::fmt;
+use std::sync::mpsc::{self, Sender};
+use std::thread::{self, JoinHandle};
 
 use data::{GatewayCloseCode, GatewayOpcode, GatewayPayload};
 use models::{CastError, Event};
@@ -402,6 +404,143 @@ impl fmt::Debug for GatewayRuntime {
     }
 }
 
+type ThreadedHandler = Box<dyn FnMut(&Event) + Send + 'static>;
+
+struct ThreadedHandlerEntry {
+    filter: EventFilter,
+    handler: ThreadedHandler,
+}
+
+enum ThreadedDispatcherMessage {
+    Dispatch(Event),
+    Shutdown,
+}
+
+/// A background-worker event dispatcher.
+///
+/// Decouples event handling from the gateway thread by passing events across
+/// an `mpsc::channel` to a dedicated worker thread. This ensures user callbacks
+/// never block the gateway heartbeat or frame processing loop.
+pub struct ThreadedEventDispatcher {
+    sender: Option<Sender<ThreadedDispatcherMessage>>,
+    worker: Option<JoinHandle<()>>,
+}
+
+/// A builder for [`ThreadedEventDispatcher`].
+#[derive(Default)]
+pub struct ThreadedEventDispatcherBuilder {
+    handlers: Vec<ThreadedHandlerEntry>,
+}
+
+impl ThreadedEventDispatcherBuilder {
+    /// Creates a new empty builder.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+        }
+    }
+
+    /// Registers a handler for the given filter.
+    #[must_use]
+    pub fn on(
+        mut self,
+        filter: impl Into<EventFilter>,
+        handler: impl FnMut(&Event) + Send + 'static,
+    ) -> Self {
+        self.handlers.push(ThreadedHandlerEntry {
+            filter: filter.into(),
+            handler: Box::new(handler),
+        });
+        self
+    }
+
+    /// Registers a handler for a specific event name.
+    #[must_use]
+    pub fn on_name(
+        self,
+        name: impl Into<String>,
+        handler: impl FnMut(&Event) + Send + 'static,
+    ) -> Self {
+        self.on(EventFilter::name(name), handler)
+    }
+
+    /// Registers a handler for all events.
+    #[must_use]
+    pub fn on_any(self, handler: impl FnMut(&Event) + Send + 'static) -> Self {
+        self.on(EventFilter::Any, handler)
+    }
+
+    /// Spawns the worker thread and returns the active dispatcher.
+    #[must_use]
+    pub fn build(self) -> ThreadedEventDispatcher {
+        let (sender, receiver) = mpsc::channel();
+        let mut handlers = self.handlers;
+
+        let worker = thread::spawn(move || {
+            while let Ok(msg) = receiver.recv() {
+                match msg {
+                    ThreadedDispatcherMessage::Dispatch(event) => {
+                        for entry in &mut handlers {
+                            if entry.filter.matches(&event) {
+                                (entry.handler)(&event);
+                            }
+                        }
+                    }
+                    ThreadedDispatcherMessage::Shutdown => break,
+                }
+            }
+        });
+
+        ThreadedEventDispatcher {
+            sender: Some(sender),
+            worker: Some(worker),
+        }
+    }
+}
+
+impl ThreadedEventDispatcher {
+    /// Creates a builder.
+    #[must_use]
+    pub fn builder() -> ThreadedEventDispatcherBuilder {
+        ThreadedEventDispatcherBuilder::new()
+    }
+
+    /// Enqueues an event to be dispatched asynchronously by the worker thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(event)` if the worker thread has panicked or disconnected.
+    pub fn dispatch(&self, event: Event) -> Result<(), Event> {
+        if let Some(ref sender) = self.sender {
+            sender
+                .send(ThreadedDispatcherMessage::Dispatch(event))
+                .map_err(|err| match err.0 {
+                    ThreadedDispatcherMessage::Dispatch(ev) => ev,
+                    ThreadedDispatcherMessage::Shutdown => unreachable!(),
+                })
+        } else {
+            Err(event)
+        }
+    }
+
+    /// Shuts down the background worker thread and waits for it to finish.
+    pub fn shutdown(&mut self) {
+        if let Some(sender) = self.sender.take() {
+            let _ = sender.send(ThreadedDispatcherMessage::Shutdown);
+        }
+        if let Some(handle) = self.worker.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for ThreadedEventDispatcher {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -645,5 +784,38 @@ mod tests {
                 state: GatewayState::Closed
             })
         );
+    }
+
+    #[test]
+    fn threaded_dispatcher_handles_events_asynchronously() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let mut dispatcher = super::ThreadedEventDispatcher::builder()
+            .on_any(move |_event| {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            })
+            .build();
+
+        dispatcher
+            .dispatch(Event::Unknown {
+                name: "TEST_EVENT".to_string(),
+                data: Value::Null,
+            })
+            .unwrap();
+        dispatcher
+            .dispatch(Event::Unknown {
+                name: "TEST_EVENT_2".to_string(),
+                data: Value::Null,
+            })
+            .unwrap();
+
+        // Give the worker thread a moment to process or wait on shutdown
+        dispatcher.shutdown();
+
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 }
