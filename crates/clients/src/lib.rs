@@ -35,4 +35,4 @@ pub use gateway::{
 };
 pub use health::HealthReport;
 pub use http::{HttpMethod, HttpRequest, HttpResponse, RateLimit, RateLimitScope};
-pub use shard::Shard;
+pub use shard::{Shard, ShardManager};
