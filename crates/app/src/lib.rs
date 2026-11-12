@@ -4,6 +4,10 @@
 
 use data::{Object, Value};
 
+pub mod ui;
+
+pub use ui::{Component, Modal, View};
+
 /// The kind of application command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandKind {
