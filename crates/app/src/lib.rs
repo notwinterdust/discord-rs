@@ -91,12 +91,20 @@ impl CommandSync {
     pub fn between(current: &CommandTree, desired: &CommandTree) -> Self {
         let mut sync = Self::default();
         for command in &desired.commands {
-            if !current.commands.iter().any(|item| item.name == command.name) {
+            if !current
+                .commands
+                .iter()
+                .any(|item| item.name == command.name)
+            {
                 sync.upsert.push(command.clone());
             }
         }
         for command in &current.commands {
-            if !desired.commands.iter().any(|item| item.name == command.name) {
+            if !desired
+                .commands
+                .iter()
+                .any(|item| item.name == command.name)
+            {
                 sync.remove.push(command.name.clone());
             }
         }

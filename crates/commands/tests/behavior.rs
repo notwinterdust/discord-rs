@@ -9,9 +9,13 @@ fn quoted_arguments_are_preserved() {
     let output = Rc::clone(&seen);
     let mut registry = CommandRegistry::new("!");
     registry
-        .add("say", Vec::<String>::new(), move |context: &commands::Context| {
-            output.set(context.arguments == ["hello world"]);
-        })
+        .add(
+            "say",
+            Vec::<String>::new(),
+            move |context: &commands::Context| {
+                output.set(context.arguments == ["hello world"]);
+            },
+        )
         .unwrap();
 
     assert!(registry.dispatch("!say \"hello world\""));

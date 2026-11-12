@@ -71,11 +71,7 @@ pub struct ComponentRouter {
 
 impl ComponentRouter {
     /// Registers a custom-ID handler.
-    pub fn on(
-        &mut self,
-        custom_id: impl Into<String>,
-        handler: impl FnMut(&str) + 'static,
-    ) {
+    pub fn on(&mut self, custom_id: impl Into<String>, handler: impl FnMut(&str) + 'static) {
         self.handlers.push((custom_id.into(), Box::new(handler)));
     }
 

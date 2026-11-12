@@ -121,7 +121,10 @@ impl Multipart {
     pub fn finish(mut self) -> (String, Vec<u8>) {
         self.body
             .extend_from_slice(format!("--{}--\r\n", self.boundary).as_bytes());
-        (format!("multipart/form-data; boundary={}", self.boundary), self.body)
+        (
+            format!("multipart/form-data; boundary={}", self.boundary),
+            self.body,
+        )
     }
 }
 

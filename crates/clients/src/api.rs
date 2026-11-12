@@ -109,7 +109,10 @@ impl<T: Transport> DiscordApi<T> {
         guild_id: u64,
         body: impl Into<Vec<u8>>,
     ) -> Result<HttpResponse, HttpError> {
-        self.client
-            .execute(self.client.post(format!("guilds/{guild_id}/channels")).with_body(body))
+        self.client.execute(
+            self.client
+                .post(format!("guilds/{guild_id}/channels"))
+                .with_body(body),
+        )
     }
 }
