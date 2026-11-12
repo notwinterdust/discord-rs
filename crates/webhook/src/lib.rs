@@ -75,6 +75,56 @@ impl Webhook {
 /// Synchronous webhook operations share the same request model.
 pub type SyncWebhook = Webhook;
 
+/// A multipart body assembled without external dependencies.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Multipart {
+    boundary: String,
+    body: Vec<u8>,
+}
+
+impl Multipart {
+    /// Creates a multipart body with a boundary.
+    #[must_use]
+    pub fn new(boundary: impl Into<String>) -> Self {
+        Self {
+            boundary: boundary.into(),
+            body: Vec::new(),
+        }
+    }
+
+    /// Adds a text field.
+    pub fn field(&mut self, name: &str, value: &str) {
+        self.body.extend_from_slice(
+            format!(
+                "--{}\r\nContent-Disposition: form-data; name=\"{}\"\r\n\r\n{}\r\n",
+                self.boundary, name, value
+            )
+            .as_bytes(),
+        );
+    }
+
+    /// Adds a file field.
+    pub fn file(&mut self, name: &str, filename: &str, content_type: &str, content: &[u8]) {
+        self.body.extend_from_slice(
+            format!(
+                "--{}\r\nContent-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\nContent-Type: {}\r\n\r\n",
+                self.boundary, name, filename, content_type
+            )
+            .as_bytes(),
+        );
+        self.body.extend_from_slice(content);
+        self.body.extend_from_slice(b"\r\n");
+    }
+
+    /// Finalizes the body.
+    #[must_use]
+    pub fn finish(mut self) -> (String, Vec<u8>) {
+        self.body
+            .extend_from_slice(format!("--{}--\r\n", self.boundary).as_bytes());
+        (format!("multipart/form-data; boundary={}", self.boundary), self.body)
+    }
+}
+
 fn escape_json(value: &str) -> String {
     value
         .chars()
