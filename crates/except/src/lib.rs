@@ -1,7 +1,7 @@
 //! Discord error types.
 //!
-//! These types describe failures returned by the REST API and by the
-//! transport layer that performs requests.
+//! These types describe failures returned by the REST API, gateway connections,
+//! and transport layers.
 
 #![forbid(unsafe_code)]
 
@@ -36,6 +36,218 @@ impl fmt::Display for DiscordError {
 }
 
 impl Error for DiscordError {}
+
+/// A 404 Not Found error representing a missing Discord resource.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NotFound {
+    pub message: String,
+    pub code: Option<i64>,
+}
+
+impl NotFound {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_code(mut self, code: i64) -> Self {
+        self.code = Some(code);
+        self
+    }
+}
+
+impl fmt::Display for NotFound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.code {
+            Some(code) => write!(f, "Not Found: {} (Discord error code {code})", self.message),
+            None => write!(f, "Not Found: {}", self.message),
+        }
+    }
+}
+
+impl Error for NotFound {}
+
+/// A 403 Forbidden error representing lack of permissions or access.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Forbidden {
+    pub message: String,
+    pub code: Option<i64>,
+}
+
+impl Forbidden {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_code(mut self, code: i64) -> Self {
+        self.code = Some(code);
+        self
+    }
+}
+
+impl fmt::Display for Forbidden {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.code {
+            Some(code) => write!(f, "Forbidden: {} (Discord error code {code})", self.message),
+            None => write!(f, "Forbidden: {}", self.message),
+        }
+    }
+}
+
+impl Error for Forbidden {}
+
+/// A 401 Unauthorized error representing an invalid or missing authentication token.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unauthorized {
+    pub message: String,
+}
+
+impl Unauthorized {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for Unauthorized {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Unauthorized: {}", self.message)
+    }
+}
+
+impl Error for Unauthorized {}
+
+/// A rate-limiting error indicating the caller must wait before retrying.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RateLimitedError {
+    pub retry_after: Duration,
+    pub global: bool,
+}
+
+impl RateLimitedError {
+    #[must_use]
+    pub const fn new(retry_after: Duration, global: bool) -> Self {
+        Self {
+            retry_after,
+            global,
+        }
+    }
+}
+
+impl fmt::Display for RateLimitedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.global {
+            write!(
+                f,
+                "Globally rate limited for {:.3} seconds",
+                self.retry_after.as_secs_f64()
+            )
+        } else {
+            write!(
+                f,
+                "Rate limited for {:.3} seconds",
+                self.retry_after.as_secs_f64()
+            )
+        }
+    }
+}
+
+impl Error for RateLimitedError {}
+
+/// An invalid data / unprocessable entity error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvalidData {
+    pub message: String,
+}
+
+impl InvalidData {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for InvalidData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Invalid Data: {}", self.message)
+    }
+}
+
+impl Error for InvalidData {}
+
+/// An error indicating the Discord gateway endpoint could not be found or resolved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GatewayNotFound {
+    pub url: String,
+}
+
+impl GatewayNotFound {
+    #[must_use]
+    pub fn new(url: impl Into<String>) -> Self {
+        Self { url: url.into() }
+    }
+}
+
+impl fmt::Display for GatewayNotFound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Gateway Not Found: {}", self.url)
+    }
+}
+
+impl Error for GatewayNotFound {}
+
+/// Granular client exception hierarchy unifying all Discord error scenarios.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClientException {
+    NotFound(NotFound),
+    Forbidden(Forbidden),
+    Unauthorized(Unauthorized),
+    RateLimited(RateLimitedError),
+    InvalidData(InvalidData),
+    GatewayNotFound(GatewayNotFound),
+    Http(HttpError),
+}
+
+impl fmt::Display for ClientException {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound(e) => write!(f, "{e}"),
+            Self::Forbidden(e) => write!(f, "{e}"),
+            Self::Unauthorized(e) => write!(f, "{e}"),
+            Self::RateLimited(e) => write!(f, "{e}"),
+            Self::InvalidData(e) => write!(f, "{e}"),
+            Self::GatewayNotFound(e) => write!(f, "{e}"),
+            Self::Http(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl Error for ClientException {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::NotFound(e) => Some(e),
+            Self::Forbidden(e) => Some(e),
+            Self::Unauthorized(e) => Some(e),
+            Self::RateLimited(e) => Some(e),
+            Self::InvalidData(e) => Some(e),
+            Self::GatewayNotFound(e) => Some(e),
+            Self::Http(e) => Some(e),
+        }
+    }
+}
 
 /// An error raised while performing an HTTP request.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -135,6 +347,32 @@ impl HttpError {
     pub const fn is_rate_limited(&self) -> bool {
         matches!(self, Self::RateLimited { .. })
     }
+
+    /// Converts this HTTP error into a granular [`ClientException`].
+    #[must_use]
+    pub fn to_client_exception(&self) -> ClientException {
+        match self {
+            Self::Status { status: 404, error } => ClientException::NotFound(NotFound {
+                message: error.as_ref().map(|e| e.message.clone()).unwrap_or_else(|| "Resource not found".into()),
+                code: error.as_ref().map(|e| e.code),
+            }),
+            Self::Status { status: 403, error } => ClientException::Forbidden(Forbidden {
+                message: error.as_ref().map(|e| e.message.clone()).unwrap_or_else(|| "Missing Permissions".into()),
+                code: error.as_ref().map(|e| e.code),
+            }),
+            Self::Status { status: 401, error } => ClientException::Unauthorized(Unauthorized {
+                message: error.as_ref().map(|e| e.message.clone()).unwrap_or_else(|| "401: Unauthorized".into()),
+            }),
+            Self::RateLimited { retry_after, global } => ClientException::RateLimited(RateLimitedError {
+                retry_after: *retry_after,
+                global: *global,
+            }),
+            Self::Decode { message } => ClientException::InvalidData(InvalidData {
+                message: message.clone(),
+            }),
+            _ => ClientException::Http(self.clone()),
+        }
+    }
 }
 
 impl fmt::Display for HttpError {
@@ -180,7 +418,10 @@ mod tests {
     use std::error::Error;
     use std::time::Duration;
 
-    use super::{DiscordError, HttpError};
+    use super::{
+        ClientException, DiscordError, Forbidden, GatewayNotFound, HttpError, InvalidData, NotFound,
+        RateLimitedError, Unauthorized,
+    };
 
     #[test]
     fn discord_errors_display_code_and_message() {
@@ -233,5 +474,44 @@ mod tests {
         let decode = HttpError::decode("unexpected end of input");
         assert_eq!(decode.status_code(), None);
         assert_eq!(decode.to_string(), "decode error: unexpected end of input");
+    }
+
+    #[test]
+    fn granular_error_hierarchy_and_conversions() {
+        let not_found = NotFound::new("Unknown Channel").with_code(10003);
+        assert_eq!(not_found.to_string(), "Not Found: Unknown Channel (Discord error code 10003)");
+
+        let forbidden = Forbidden::new("Missing Permissions").with_code(50013);
+        assert_eq!(forbidden.to_string(), "Forbidden: Missing Permissions (Discord error code 50013)");
+
+        let unauthorized = Unauthorized::new("Invalid token");
+        assert_eq!(unauthorized.to_string(), "Unauthorized: Invalid token");
+
+        let rate_limit = RateLimitedError::new(Duration::from_secs(5), false);
+        assert_eq!(rate_limit.to_string(), "Rate limited for 5.000 seconds");
+
+        let invalid = InvalidData::new("Malformed JSON");
+        assert_eq!(invalid.to_string(), "Invalid Data: Malformed JSON");
+
+        let gw = GatewayNotFound::new("wss://gateway.discord.gg");
+        assert_eq!(gw.to_string(), "Gateway Not Found: wss://gateway.discord.gg");
+
+        // Conversion from HttpError to ClientException
+        let http_404 = HttpError::status(404, Some(DiscordError::new(10003, "Channel not found")));
+        let ex_404 = http_404.to_client_exception();
+        assert!(matches!(ex_404, ClientException::NotFound(_)));
+        assert!(ex_404.source().is_some());
+
+        let http_403 = HttpError::status(403, None);
+        let ex_403 = http_403.to_client_exception();
+        assert!(matches!(ex_403, ClientException::Forbidden(_)));
+
+        let http_429 = HttpError::rate_limited(Duration::from_secs(1), true);
+        let ex_429 = http_429.to_client_exception();
+        assert!(matches!(ex_429, ClientException::RateLimited(_)));
+
+        let http_decode = HttpError::decode("corrupt");
+        let ex_decode = http_decode.to_client_exception();
+        assert!(matches!(ex_decode, ClientException::InvalidData(_)));
     }
 }
