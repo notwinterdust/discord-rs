@@ -938,6 +938,128 @@ impl GuildIntegrationsUpdate {
     }
 }
 
+/// The payload of a `VOICE_STATE_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VoiceStateUpdate {
+    /// The guild ID, if any.
+    pub guild_id: Option<Snowflake>,
+    /// The channel ID the user joined, or None if disconnected.
+    pub channel_id: Option<Snowflake>,
+    /// The user ID.
+    pub user_id: Snowflake,
+    /// The member data, if in a guild.
+    pub member: Option<Member>,
+    /// The session ID.
+    pub session_id: String,
+    /// Whether this user is deafened by the server.
+    pub deaf: bool,
+    /// Whether this user is muted by the server.
+    pub mute: bool,
+    /// Whether this user is locally deafened.
+    pub self_deaf: bool,
+    /// Whether this user is locally muted.
+    pub self_mute: bool,
+    /// Whether this user is streaming using "Go Live".
+    pub self_stream: bool,
+    /// Whether this user's camera is enabled.
+    pub self_video: bool,
+    /// Whether this user is muted by the current client.
+    pub suppress: bool,
+}
+
+impl VoiceStateUpdate {
+    /// Decodes a `VOICE_STATE_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "voice_state_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        let guild_id = cast::optional_snowflake(object, path, "guild_id")?;
+        let member_path = cast::field_path(path, "member");
+        let member = cast::optional_object(object, path, "member")?
+            .map(|member| {
+                Member::from_object_at(member, &member_path, guild_id.unwrap_or_default(), &[])
+            })
+            .transpose()?;
+
+        Ok(Self {
+            guild_id,
+            channel_id: cast::optional_snowflake(object, path, "channel_id")?,
+            user_id: cast::required_snowflake(object, path, "user_id")?,
+            member,
+            session_id: cast::required_string(object, path, "session_id")?.to_owned(),
+            deaf: cast::optional_bool(object, path, "deaf", false)?,
+            mute: cast::optional_bool(object, path, "mute", false)?,
+            self_deaf: cast::optional_bool(object, path, "self_deaf", false)?,
+            self_mute: cast::optional_bool(object, path, "self_mute", false)?,
+            self_stream: cast::optional_bool(object, path, "self_stream", false)?,
+            self_video: cast::optional_bool(object, path, "self_video", false)?,
+            suppress: cast::optional_bool(object, path, "suppress", false)?,
+        })
+    }
+}
+
+/// The payload of a `VOICE_SERVER_UPDATE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VoiceServerUpdate {
+    /// Voice connection token.
+    pub token: String,
+    /// Guild ID the voice server is for.
+    pub guild_id: Snowflake,
+    /// Voice server host endpoint.
+    pub endpoint: Option<String>,
+}
+
+impl VoiceServerUpdate {
+    /// Decodes a `VOICE_SERVER_UPDATE` payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "voice_server_update")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            token: cast::required_string(object, path, "token")?.to_owned(),
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            endpoint: cast::optional_string(object, path, "endpoint")?.map(str::to_owned),
+        })
+    }
+}
+
+/// The payload of a `STAGE_INSTANCE_CREATE`, `UPDATE` or `DELETE` event.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StageInstanceEvent {
+    /// The stage instance ID.
+    pub id: Snowflake,
+    /// The guild ID.
+    pub guild_id: Snowflake,
+    /// The channel ID.
+    pub channel_id: Snowflake,
+    /// The topic of the stage instance.
+    pub topic: String,
+    /// Privacy level.
+    pub privacy_level: u8,
+}
+
+impl StageInstanceEvent {
+    /// Decodes a stage instance payload.
+    pub fn from_value(value: &Value) -> Result<Self, CastError> {
+        Self::from_value_at(value, "stage_instance")
+    }
+
+    pub(crate) fn from_value_at(value: &Value, path: &str) -> Result<Self, CastError> {
+        let object = cast::object(value, path)?;
+        Ok(Self {
+            id: cast::required_snowflake(object, path, "id")?,
+            guild_id: cast::required_snowflake(object, path, "guild_id")?,
+            channel_id: cast::required_snowflake(object, path, "channel_id")?,
+            topic: cast::required_string(object, path, "topic")?.to_owned(),
+            privacy_level: cast::required_u16(object, path, "privacy_level")? as u8,
+        })
+    }
+}
+
 /// A typed gateway event.
 ///
 /// Variants that Discord can send but this library does not model yet are not
@@ -1022,6 +1144,16 @@ pub enum Event {
     IntegrationUpdate(IntegrationEvent),
     /// An integration was deleted.
     IntegrationDelete(IntegrationDelete),
+    /// A user's voice state changed.
+    VoiceStateUpdate(VoiceStateUpdate),
+    /// A guild voice server was updated.
+    VoiceServerUpdate(VoiceServerUpdate),
+    /// A stage instance was created.
+    StageInstanceCreate(StageInstanceEvent),
+    /// A stage instance was updated.
+    StageInstanceUpdate(StageInstanceEvent),
+    /// A stage instance was deleted.
+    StageInstanceDelete(StageInstanceEvent),
     /// An audit log entry was created.
     GuildAuditLogEntryCreate(crate::AuditLogEntry),
     /// An interaction was created.
@@ -1159,6 +1291,19 @@ impl Event {
             "INTEGRATION_CREATE" => Ok(Self::IntegrationCreate(IntegrationEvent::from_value(data)?)),
             "INTEGRATION_UPDATE" => Ok(Self::IntegrationUpdate(IntegrationEvent::from_value(data)?)),
             "INTEGRATION_DELETE" => Ok(Self::IntegrationDelete(IntegrationDelete::from_value(data)?)),
+            "VOICE_STATE_UPDATE" => Ok(Self::VoiceStateUpdate(VoiceStateUpdate::from_value(data)?)),
+            "VOICE_SERVER_UPDATE" => {
+                Ok(Self::VoiceServerUpdate(VoiceServerUpdate::from_value(data)?))
+            }
+            "STAGE_INSTANCE_CREATE" => Ok(Self::StageInstanceCreate(
+                StageInstanceEvent::from_value(data)?,
+            )),
+            "STAGE_INSTANCE_UPDATE" => Ok(Self::StageInstanceUpdate(
+                StageInstanceEvent::from_value(data)?,
+            )),
+            "STAGE_INSTANCE_DELETE" => Ok(Self::StageInstanceDelete(
+                StageInstanceEvent::from_value(data)?,
+            )),
             "GUILD_AUDIT_LOG_ENTRY_CREATE" => Ok(Self::GuildAuditLogEntryCreate(
                 crate::AuditLogEntry::from_value(data, payload_guild_id(data)?)?,
             )),
@@ -1234,6 +1379,11 @@ impl Event {
             Self::IntegrationCreate(_) => "INTEGRATION_CREATE",
             Self::IntegrationUpdate(_) => "INTEGRATION_UPDATE",
             Self::IntegrationDelete(_) => "INTEGRATION_DELETE",
+            Self::VoiceStateUpdate(_) => "VOICE_STATE_UPDATE",
+            Self::VoiceServerUpdate(_) => "VOICE_SERVER_UPDATE",
+            Self::StageInstanceCreate(_) => "STAGE_INSTANCE_CREATE",
+            Self::StageInstanceUpdate(_) => "STAGE_INSTANCE_UPDATE",
+            Self::StageInstanceDelete(_) => "STAGE_INSTANCE_DELETE",
             Self::GuildAuditLogEntryCreate(_) => "GUILD_AUDIT_LOG_ENTRY_CREATE",
             Self::InteractionCreate(_) => "INTERACTION_CREATE",
             Self::InviteCreate(_) => "INVITE_CREATE",
