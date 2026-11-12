@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 data = { path = "../data" }
+enums = { path = "../enums" }
