@@ -10,11 +10,16 @@
 #![forbid(unsafe_code)]
 
 pub mod client;
+pub mod connection;
 pub mod events;
 pub mod gateway;
 pub mod http;
 
 pub use client::{HttpClient, TcpTransport, Transport};
+pub use connection::{
+    GatewayConnection, GatewayConnectionError, GatewayFrame, GatewayTransport,
+    GatewayTransportError,
+};
 pub use events::{EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, RuntimeError};
 pub use gateway::{
     Gateway, GatewayAction, GatewayConfig, GatewayError, GatewayState, ReconnectPolicy,
