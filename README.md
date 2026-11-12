@@ -24,11 +24,11 @@ A feature-rich, high-performance Discord API and Gateway library for Rust.
 
 ## Installation
 
-Just add `discord-rs` to your `Cargo.toml`:
+Just add `discord-rust` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-discord-rs = "0.1.0"
+discord-rust = "0.1.0"
 ```
 ---
 
