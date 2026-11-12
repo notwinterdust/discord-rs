@@ -7,5 +7,6 @@ edition = "2024"
 data = { path = "../data" }
 enums = { path = "../enums" }
 except = { path = "../except" }
+models = { path = "../models" }
 util = { path = "../util" }
 version = { path = "../version" }

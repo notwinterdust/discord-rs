@@ -743,6 +743,56 @@ impl Event {
             }),
         }
     }
+
+    /// Returns the event's gateway name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Ready(_) => "READY",
+            Self::Resumed => "RESUMED",
+            Self::GuildCreate(_) => "GUILD_CREATE",
+            Self::GuildUpdate(_) => "GUILD_UPDATE",
+            Self::GuildDelete(_) => "GUILD_DELETE",
+            Self::ChannelCreate(_) => "CHANNEL_CREATE",
+            Self::ChannelUpdate(_) => "CHANNEL_UPDATE",
+            Self::ChannelDelete(_) => "CHANNEL_DELETE",
+            Self::ThreadCreate(_) => "THREAD_CREATE",
+            Self::ThreadUpdate(_) => "THREAD_UPDATE",
+            Self::ThreadDelete(_) => "THREAD_DELETE",
+            Self::GuildMemberAdd(_) => "GUILD_MEMBER_ADD",
+            Self::GuildMemberRemove(_) => "GUILD_MEMBER_REMOVE",
+            Self::GuildMemberUpdate(_) => "GUILD_MEMBER_UPDATE",
+            Self::GuildRoleCreate(_) => "GUILD_ROLE_CREATE",
+            Self::GuildRoleUpdate(_) => "GUILD_ROLE_UPDATE",
+            Self::GuildRoleDelete(_) => "GUILD_ROLE_DELETE",
+            Self::MessageCreate(_) => "MESSAGE_CREATE",
+            Self::MessageUpdate(_) => "MESSAGE_UPDATE",
+            Self::MessageDelete(_) => "MESSAGE_DELETE",
+            Self::MessageDeleteBulk(_) => "MESSAGE_DELETE_BULK",
+            Self::MessageReactionAdd(_) => "MESSAGE_REACTION_ADD",
+            Self::MessageReactionRemove(_) => "MESSAGE_REACTION_REMOVE",
+            Self::MessageReactionRemoveAll(_) => "MESSAGE_REACTION_REMOVE_ALL",
+            Self::MessageReactionRemoveEmoji(_) => "MESSAGE_REACTION_REMOVE_EMOJI",
+            Self::InteractionCreate(_) => "INTERACTION_CREATE",
+            Self::InviteCreate(_) => "INVITE_CREATE",
+            Self::InviteDelete(_) => "INVITE_DELETE",
+            Self::WebhooksUpdate(_) => "WEBHOOKS_UPDATE",
+            Self::UserUpdate(_) => "USER_UPDATE",
+            Self::TypingStart(_) => "TYPING_START",
+            Self::GuildScheduledEventCreate(_) => "GUILD_SCHEDULED_EVENT_CREATE",
+            Self::GuildScheduledEventUpdate(_) => "GUILD_SCHEDULED_EVENT_UPDATE",
+            Self::GuildScheduledEventDelete(_) => "GUILD_SCHEDULED_EVENT_DELETE",
+            Self::GuildScheduledEventUserAdd(_) => "GUILD_SCHEDULED_EVENT_USER_ADD",
+            Self::GuildScheduledEventUserRemove(_) => "GUILD_SCHEDULED_EVENT_USER_REMOVE",
+            Self::Unknown { name, .. } => name,
+        }
+    }
+
+    /// Returns `true` if the event name is not modelled yet.
+    #[must_use]
+    pub const fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown { .. })
+    }
 }
 
 fn channel(value: &Value) -> Result<GuildChannel, CastError> {
@@ -1316,5 +1366,11 @@ mod tests {
             }
             other => panic!("expected an unknown event, got {other:?}"),
         }
+
+        let unknown = Event::from_value("FUTURE_EVENT", &raw).unwrap();
+        assert_eq!(unknown.name(), "FUTURE_EVENT");
+        assert!(unknown.is_unknown());
+        assert_eq!(Event::Resumed.name(), "RESUMED");
+        assert!(!Event::Resumed.is_unknown());
     }
 }
