@@ -3,6 +3,7 @@
 use except::HttpError;
 
 use crate::{HttpClient, HttpResponse, Transport};
+use data::Value;
 
 /// REST operations for core Discord resources.
 #[derive(Clone, Debug)]
@@ -114,5 +115,30 @@ impl<T: Transport> DiscordApi<T> {
                 .post(format!("guilds/{guild_id}/channels"))
                 .with_body(body),
         )
+    }
+
+    /// Sends an interaction callback.
+    pub fn interaction_callback(
+        &self,
+        interaction_id: u64,
+        token: &str,
+        body: &Value,
+    ) -> Result<HttpResponse, HttpError> {
+        self.client.execute_json(
+            self.client
+                .post(format!("interactions/{interaction_id}/{token}/callback")),
+            body,
+        )
+    }
+
+    /// Sends a followup interaction message.
+    pub fn interaction_followup(
+        &self,
+        application_id: u64,
+        token: &str,
+        body: &Value,
+    ) -> Result<HttpResponse, HttpError> {
+        self.client
+            .execute_json(self.client.post(format!("webhooks/{application_id}/{token}")), body)
     }
 }
