@@ -24,6 +24,7 @@
 
 mod application;
 mod audit_log;
+mod automod;
 mod cast;
 mod channel;
 mod client_user;
@@ -37,17 +38,24 @@ mod interaction;
 mod invite;
 mod member;
 mod message;
+mod monetization;
+mod onboarding;
 mod poll;
+mod presence;
 mod reaction;
 mod role;
 mod scheduled_event;
+mod soundboard;
+mod stage_instance;
 mod sticker;
+mod template;
 mod thread;
 mod user;
 mod webhook;
 
 pub use abc::{Asset, Color, Colour, HasId, Snowflake};
 pub use application::PartialApplication;
+pub use automod::{AutoModAction, AutoModActionMetadata, AutoModRule, AutoModTriggerMetadata};
 pub use audit_log::{
     AuditLog, AuditLogChange, AuditLogChangeKey, AuditLogChangeValue, AuditLogEntry,
     AuditLogEntryInfo, AuditLogEntryTarget,
@@ -94,11 +102,19 @@ pub use interaction::{
 pub use invite::{Invite, InviteChannel, InviteGuild, PartialInviteChannel, PartialInviteGuild};
 pub use member::Member;
 pub use message::{Attachment, Message, MessageAuthor, MessageReference};
+pub use monetization::{Entitlement, Sku};
+pub use onboarding::{
+    Onboarding, OnboardingPrompt, OnboardingPromptOption, WelcomeScreen, WelcomeScreenChannel,
+};
 pub use poll::{Poll, PollAnswer, PollAnswerCount, PollMedia, PollResults};
+pub use presence::{Activity, ClientStatus, Presence};
 pub use reaction::Reaction;
 pub use role::{Role, RoleIcon, RoleTags};
 pub use scheduled_event::{GuildScheduledEvent, ScheduledEventUser};
+pub use soundboard::SoundboardSound;
+pub use stage_instance::{StageInstance, StagePrivacyLevel};
 pub use sticker::{Sticker, StickerItem, StickerPack};
+pub use template::GuildTemplate;
 pub use thread::{ThreadInfo, ThreadMember, ThreadMetadata};
 pub use user::User;
 pub use webhook::{PartialWebhookChannel, PartialWebhookGuild, Webhook, WebhookMessage};

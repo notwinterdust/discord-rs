@@ -338,6 +338,52 @@ impl Asset {
             animated: self.animated,
         })
     }
+
+    /// Downloads the asset bytes using a user-provided fetch closure or transport.
+    pub fn read<F, E>(&self, fetch: F) -> Result<Vec<u8>, E>
+    where
+        F: FnOnce(&str) -> Result<Vec<u8>, E>,
+    {
+        fetch(self.url())
+    }
+
+    /// Downloads the asset and writes it to a file on disk.
+    pub fn save<P, F, E>(&self, path: P, fetch: F) -> Result<(), AssetSaveError<E>>
+    where
+        P: AsRef<std::path::Path>,
+        F: FnOnce(&str) -> Result<Vec<u8>, E>,
+    {
+        let data = fetch(self.url()).map_err(AssetSaveError::Fetch)?;
+        std::fs::write(path, data).map_err(AssetSaveError::Io)?;
+        Ok(())
+    }
+}
+
+/// An error encountered while saving an asset to disk.
+#[derive(Debug)]
+pub enum AssetSaveError<E> {
+    /// Failed to fetch asset data over the network.
+    Fetch(E),
+    /// Failed to write asset to local storage.
+    Io(std::io::Error),
+}
+
+impl<E: fmt::Display> fmt::Display for AssetSaveError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fetch(e) => write!(f, "failed to download asset: {e}"),
+            Self::Io(e) => write!(f, "failed to write asset to disk: {e}"),
+        }
+    }
+}
+
+impl<E: Error + 'static> Error for AssetSaveError<E> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Fetch(e) => Some(e),
+            Self::Io(e) => Some(e),
+        }
+    }
 }
 
 impl PartialEq for Asset {
@@ -554,5 +600,22 @@ mod tests {
         b.hash(&mut hasher_b);
         assert_eq!(hasher_a.finish(), hasher_b.finish());
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn asset_read_and_save() {
+        let asset = Asset::new("https://cdn.discordapp.com/icons/123/abc.png", "abc", false);
+        let bytes = asset.read(|url| {
+            assert_eq!(url, "https://cdn.discordapp.com/icons/123/abc.png");
+            Ok::<_, &'static str>(b"test image data".to_vec())
+        }).unwrap();
+        assert_eq!(bytes, b"test image data");
+
+        let temp_dir = std::env::temp_dir();
+        let target_path = temp_dir.join("test_discord_asset.png");
+        asset.save(&target_path, |_| Ok::<_, &'static str>(b"saved data".to_vec())).unwrap();
+        let read_back = std::fs::read(&target_path).unwrap();
+        assert_eq!(read_back, b"saved data");
+        let _ = std::fs::remove_file(target_path);
     }
 }

@@ -14,7 +14,7 @@ mod colour;
 mod snowflake;
 mod user;
 
-pub use asset::{Asset, AssetError, AssetFormat, CDN_BASE, valid_icon_size};
+pub use asset::{Asset, AssetError, AssetFormat, AssetSaveError, CDN_BASE, valid_icon_size};
 pub use colour::{Color, Colour, ColourError};
 pub use snowflake::{DISCORD_EPOCH_MS, HasId, Snowflake};
 pub use user::User;
