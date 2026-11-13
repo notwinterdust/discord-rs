@@ -97,8 +97,41 @@ jobs:
             discord-rust
           )
 
+          metadata="$(cargo metadata --no-deps --format-version 1)"
+
+          crate_version() {
+            jq -r --arg name "$1" \
+              '.packages[] | select(.name == $name) | .version' <<<"$metadata"
+          }
+
+          already_published() {
+            local status
+            status="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H 'User-Agent: discord-rust-release-workflow' \
+              "https://crates.io/api/v1/crates/$1/$2")"
+            # crates.io asks clients to stay below one request per second.
+            sleep 1
+            case "$status" in
+              200) return 0 ;;
+              404) return 1 ;;
+              *)
+                echo "Unexpected crates.io response ($status) for $1 $2." >&2
+                exit 1
+                ;;
+            esac
+          }
+
           for crate in "${CRATES[@]}"; do
-            echo "Publishing crate: $crate..."
+            version="$(crate_version "$crate")"
+            if [ -z "$version" ]; then
+              echo "Could not determine the workspace version of $crate." >&2
+              exit 1
+            fi
+            if already_published "$crate" "$version"; then
+              echo "Skipping $crate $version: already published on crates.io."
+              continue
+            fi
+            echo "Publishing crate: $crate $version..."
             cargo publish -p "$crate" --token "$CARGO_REGISTRY_TOKEN"
             echo "Sleeping 15 seconds to allow crates.io index to update..."
             sleep 15
