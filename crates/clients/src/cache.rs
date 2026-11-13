@@ -2,7 +2,7 @@
 //!
 //! [`Cache`] is the low-level building block: a bounded `HashMap` keyed by
 //! `u64` ID.  [`ClientCache`] composes per-type [`Cache`]s and updates them
-//! when fed [`Event`] values from the gateway.
+//! when fed [`models::Event`] values from the gateway.
 
 use std::collections::HashMap;
 

@@ -1,5 +1,6 @@
 //! Simplified bot builder and event waiter utilities.
 
+use std::collections::VecDeque;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -120,13 +121,25 @@ impl Bot {
     }
 }
 
+/// The number of recently dispatched events kept for late waiters.
+const HISTORY_LIMIT: usize = 64;
+
+/// The listeners and the recent events that no listener received.
+#[derive(Default)]
+struct WaiterState {
+    listeners: Vec<Sender<Event>>,
+    history: VecDeque<Event>,
+}
+
 /// Subscribes to events matching a predicate, blocking until one arrives or the
 /// timeout elapses.
 ///
 /// Each call to [`EventWaiter::wait_for`] registers a one-shot listener on the
-/// shared sender that feeds the waiter's internal channel.
+/// shared sender that feeds the waiter's internal channel. Events dispatched
+/// while no listener was registered are kept in a small bounded history, so a
+/// waiter started right after the dispatch still observes them.
 pub struct EventWaiter {
-    listeners: Arc<Mutex<Vec<Sender<Event>>>>,
+    state: Arc<Mutex<WaiterState>>,
 }
 
 impl Default for EventWaiter {
@@ -140,22 +153,39 @@ impl EventWaiter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            listeners: Arc::new(Mutex::new(Vec::new())),
+            state: Arc::new(Mutex::new(WaiterState::default())),
         }
     }
 
     /// Call this from your event-dispatch loop to fan out to any waiting
     /// listeners.
+    ///
+    /// An event that reaches no listener is remembered in a bounded history,
+    /// so a waiter that starts immediately after the dispatch can still match
+    /// it.
     pub fn dispatch(&self, event: &Event) {
-        let mut listeners = self.listeners.lock().unwrap_or_else(|e| e.into_inner());
-        listeners.retain(|tx| tx.send(event.clone()).is_ok());
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut delivered = false;
+        state.listeners.retain(|tx| match tx.send(event.clone()) {
+            Ok(()) => {
+                delivered = true;
+                true
+            }
+            Err(_) => false,
+        });
+        if !delivered {
+            if state.history.len() == HISTORY_LIMIT {
+                state.history.pop_front();
+            }
+            state.history.push_back(event.clone());
+        }
     }
 
     /// Returns the number of active listeners.
     #[must_use]
     pub fn listener_count(&self) -> usize {
-        let listeners = self.listeners.lock().unwrap_or_else(|e| e.into_inner());
-        listeners.len()
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.listeners.len()
     }
 
     /// Blocks the calling thread until an event matching `predicate` arrives or
@@ -172,8 +202,14 @@ impl EventWaiter {
     {
         let (tx, rx): (Sender<Event>, Receiver<Event>) = mpsc::channel();
         {
-            let mut listeners = self.listeners.lock().unwrap_or_else(|e| e.into_inner());
-            listeners.push(tx);
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(index) = state.history.iter().rposition(|event| predicate(event)) {
+                return Ok(state
+                    .history
+                    .remove(index)
+                    .expect("history index came from the same deque"));
+            }
+            state.listeners.push(tx);
         }
         let deadline = std::time::Instant::now() + timeout;
         loop {
@@ -244,6 +280,60 @@ mod tests {
         let waiter = EventWaiter::new();
         let result = waiter.wait_for(|_| false, Duration::from_millis(10));
         assert_eq!(result, Err(RecvTimeoutError::Timeout));
+    }
+
+    #[test]
+    fn event_waiter_replays_undelivered_events_once() {
+        let waiter = EventWaiter::new();
+        waiter.dispatch(&Event::Resumed);
+
+        let result = waiter.wait_for(|e| matches!(e, Event::Resumed), Duration::from_millis(10));
+        assert_eq!(result, Ok(Event::Resumed));
+
+        let result = waiter.wait_for(|e| matches!(e, Event::Resumed), Duration::from_millis(10));
+        assert_eq!(result, Err(RecvTimeoutError::Timeout));
+    }
+
+    #[test]
+    fn event_waiter_does_not_replay_delivered_events() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let waiter = Arc::new(EventWaiter::new());
+        let listener = Arc::clone(&waiter);
+        let handle = thread::spawn(move || listener.wait_for(|_| true, Duration::from_secs(2)));
+
+        while waiter.listener_count() == 0 {
+            thread::sleep(Duration::from_millis(1));
+        }
+        waiter.dispatch(&Event::Resumed);
+
+        assert_eq!(handle.join().unwrap(), Ok(Event::Resumed));
+        assert_eq!(
+            waiter.wait_for(|_| true, Duration::from_millis(10)),
+            Err(RecvTimeoutError::Timeout)
+        );
+    }
+
+    #[test]
+    fn event_waiter_history_is_bounded() {
+        let waiter = EventWaiter::new();
+        for index in 0..=HISTORY_LIMIT {
+            waiter.dispatch(&Event::Unknown {
+                name: format!("EVENT_{index}"),
+                data: data::Value::Null,
+            });
+        }
+
+        assert_eq!(
+            waiter.wait_for(|e| e.name() == "EVENT_0", Duration::from_millis(10)),
+            Err(RecvTimeoutError::Timeout)
+        );
+        let newest = format!("EVENT_{HISTORY_LIMIT}");
+        let event = waiter
+            .wait_for(|e| e.name() == newest, Duration::from_millis(10))
+            .unwrap();
+        assert_eq!(event.name(), newest);
     }
 
     #[test]
