@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 //! # discord-rust
 //!
-//! A feature-rich, standard-library-only Discord API and Gateway library for Rust.
+//! A feature-rich Discord API and Gateway library for Rust.
 //!
-//! Designed with zero external runtime dependencies (`async`/`tokio`-free, pure `std`),
-//! strict `#![forbid(unsafe_code)]`, and modular architecture.
+//! Designed for high performance, typed safety, predictable memory footprints,
+//! and clean modular architecture.
 //!
 //! ## Modules
 //!
@@ -16,9 +16,10 @@
 //! - [`enums`]: Bitflags, permissions, intents, and opcodes
 //! - [`event`]: Gateway event types and dispatching
 //! - [`except`]: Error types and error hierarchy
-//! - [`log`]: Zero-dependency structured logging framework
+//! - [`log`]: Structured logging framework
+//! - [`macros`]: Procedural command attribute macros
 //! - [`models`]: Strongly-typed Discord domain models
-//! - [`util`]: Percent-encoding and query utilities
+//! - [`util`]: Percent-encoding, query utilities, and worker thread pool
 //! - [`version`]: Discord API version constants and endpoint builders
 //! - [`voice`]: Voice gateway connection, RTP packets, and encryption traits
 //! - [`webhook`]: Webhook client and multipart execution
@@ -32,6 +33,7 @@ pub use enums;
 pub use event;
 pub use except;
 pub use log;
+pub use macros;
 pub use models;
 pub use util;
 pub use version;
@@ -39,9 +41,15 @@ pub use voice;
 pub use webhook;
 
 // Re-export key high-level types at the crate root for ergonomics
+pub use app::ui::Paginator;
 pub use clients::bot::{Bot, BotBuilder, EventWaiter, Hooks};
+pub use clients::cache::{ClientCache, MessageEditTracker};
 pub use clients::client::HttpClient;
 pub use clients::connection::GatewayConnection;
+pub use clients::events::{PooledEventDispatcher, ThreadedEventDispatcher};
 pub use clients::shard::{ConcurrentShardRuntime, ShardManager};
+pub use commands::command;
 pub use enums::Intents;
 pub use models::Event;
+pub use util::ThreadPool;
+pub use voice::ffmpeg::FfmpegSource;

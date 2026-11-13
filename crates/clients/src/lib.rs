@@ -22,7 +22,7 @@ pub mod shard;
 
 pub use api::DiscordApi;
 pub use bot::{Bot, BotBuilder, EventWaiter, Hooks};
-pub use cache::{Cache, CacheConfig, ClientCache, MemberCache};
+pub use cache::{Cache, CacheConfig, ClientCache, MemberCache, MessageEditTracker};
 pub use client::{
     Client, ClientState, HttpClient, PendingResponse, RetryPolicy, SecureTransport, TcpTransport,
     ThreadedRequestExecutor, Transport,
@@ -32,8 +32,9 @@ pub use connection::{
     GatewayTransportError, ThreadedCoordinator, WebSocketFrame, WebSocketTransport,
 };
 pub use events::{
-    EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, RuntimeError,
-    ThreadedEventDispatcher, ThreadedEventDispatcherBuilder,
+    EventDispatcher, EventFilter, GatewayRuntime, GatewayUpdate, PooledEventDispatcher,
+    PooledEventDispatcherBuilder, RuntimeError, ThreadedEventDispatcher,
+    ThreadedEventDispatcherBuilder,
 };
 pub use gateway::{
     Gateway, GatewayAction, GatewayConfig, GatewayError, GatewayState, ReconnectPolicy,
@@ -41,3 +42,4 @@ pub use gateway::{
 pub use health::HealthReport;
 pub use http::{HttpMethod, HttpRequest, HttpResponse, RateLimit, RateLimitScope};
 pub use shard::{ConcurrentShardRuntime, Shard, ShardHandle, ShardManager};
+pub use util::{ThreadPool, ThreadPoolBuilder};

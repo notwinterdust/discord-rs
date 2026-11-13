@@ -2,7 +2,7 @@
 //!
 //! [`Cache`] is the low-level building block: a bounded `HashMap` keyed by
 //! `u64` ID.  [`ClientCache`] composes per-type [`Cache`]s and updates them
-//! when fed [`Event`] values from the gateway.
+//! when fed [`models::Event`] values from the gateway.
 
 use std::collections::HashMap;
 
@@ -119,6 +119,94 @@ impl MemberCache {
 }
 
 // ---------------------------------------------------------------------------
+// Message edit and response correlation tracker
+// ---------------------------------------------------------------------------
+
+/// Bounded bidirectional tracker mapping command messages to bot response messages.
+#[derive(Clone, Debug)]
+pub struct MessageEditTracker {
+    capacity: usize,
+    user_to_response: HashMap<u64, u64>,
+    response_to_user: HashMap<u64, u64>,
+}
+
+impl MessageEditTracker {
+    /// Creates a tracker with a maximum entry count.
+    #[must_use]
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            user_to_response: HashMap::new(),
+            response_to_user: HashMap::new(),
+        }
+    }
+
+    /// Registers that a bot response was sent in reply to a user message.
+    pub fn register_response(&mut self, user_message_id: u64, bot_response_id: u64) {
+        if self.capacity == 0 {
+            return;
+        }
+        if self.user_to_response.len() >= self.capacity
+            && !self.user_to_response.contains_key(&user_message_id)
+        {
+            if let Some(old_user_id) = self.user_to_response.keys().next().copied() {
+                if let Some(old_resp_id) = self.user_to_response.remove(&old_user_id) {
+                    self.response_to_user.remove(&old_resp_id);
+                }
+            }
+        }
+        self.user_to_response
+            .insert(user_message_id, bot_response_id);
+        self.response_to_user
+            .insert(bot_response_id, user_message_id);
+    }
+
+    /// Looks up the bot response message ID for a given user command message ID.
+    #[must_use]
+    pub fn get_response(&self, user_message_id: u64) -> Option<u64> {
+        self.user_to_response.get(&user_message_id).copied()
+    }
+
+    /// Looks up the user command message ID for a given bot response message ID.
+    #[must_use]
+    pub fn get_user_message(&self, bot_response_id: u64) -> Option<u64> {
+        self.response_to_user.get(&bot_response_id).copied()
+    }
+
+    /// Removes tracking for a user message, returning the associated bot response ID if any.
+    pub fn remove_user_message(&mut self, user_message_id: u64) -> Option<u64> {
+        let resp_id = self.user_to_response.remove(&user_message_id)?;
+        self.response_to_user.remove(&resp_id);
+        Some(resp_id)
+    }
+
+    /// Removes tracking for a bot response, returning the associated user message ID if any.
+    pub fn remove_response(&mut self, bot_response_id: u64) -> Option<u64> {
+        let user_id = self.response_to_user.remove(&bot_response_id)?;
+        self.user_to_response.remove(&user_id);
+        Some(user_id)
+    }
+
+    /// Clears all tracked associations.
+    pub fn clear(&mut self) {
+        self.user_to_response.clear();
+        self.response_to_user.clear();
+    }
+
+    /// Returns the number of tracked message pairs.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.user_to_response.len()
+    }
+
+    /// Returns whether the tracker is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.user_to_response.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Composite client cache
 // ---------------------------------------------------------------------------
 
@@ -137,6 +225,8 @@ pub struct CacheConfig {
     pub messages: usize,
     /// Maximum number of presences to cache.
     pub presences: usize,
+    /// Maximum number of message edit responses to track.
+    pub message_edits: usize,
 }
 
 impl Default for CacheConfig {
@@ -148,6 +238,7 @@ impl Default for CacheConfig {
             users: 10_000,
             messages: 1_000,
             presences: 10_000,
+            message_edits: 1_000,
         }
     }
 }
@@ -172,6 +263,8 @@ pub struct ClientCache {
     pub presences: Cache<models::PresenceUpdate>,
     /// Per-guild member caches, keyed by guild ID.
     pub members: HashMap<u64, MemberCache>,
+    /// Tracked command invocation and bot response message pairs.
+    pub edit_tracker: MessageEditTracker,
 }
 
 impl ClientCache {
@@ -186,6 +279,7 @@ impl ClientCache {
             messages: Cache::new(config.messages),
             presences: Cache::new(config.presences),
             members: HashMap::new(),
+            edit_tracker: MessageEditTracker::new(config.message_edits),
         }
     }
 
@@ -275,11 +369,15 @@ impl ClientCache {
             }
             models::Event::MessageDelete(del) => {
                 self.messages.remove(del.id.get());
+                self.edit_tracker.remove_user_message(del.id.get());
+                self.edit_tracker.remove_response(del.id.get());
                 true
             }
             models::Event::MessageDeleteBulk(bulk) => {
                 for id in &bulk.ids {
                     self.messages.remove(id.get());
+                    self.edit_tracker.remove_user_message(id.get());
+                    self.edit_tracker.remove_response(id.get());
                 }
                 true
             }
@@ -299,6 +397,23 @@ impl ClientCache {
 
             // All other events do not mutate the cache.
             _ => false,
+        }
+    }
+
+    /// Updates the cache from a gateway event, capturing previous message state if edited.
+    ///
+    /// Returns a tuple `(mutated, edit_info)` where `edit_info` is `Some((old_msg, new_msg))`
+    /// if the event was a [`models::Event::MessageUpdate`].
+    pub fn update_tracked(
+        &mut self,
+        event: &models::Event,
+    ) -> (bool, Option<(Option<models::Message>, models::Message)>) {
+        if let models::Event::MessageUpdate(msg) = event {
+            let previous = self.messages.get(msg.id.get()).cloned();
+            self.messages.insert(msg.id.get(), msg.clone());
+            (true, Some((previous, msg.clone())))
+        } else {
+            (self.update(event), None)
         }
     }
 
@@ -377,6 +492,7 @@ mod tests {
             users: 100,
             messages: 50,
             presences: 100,
+            message_edits: 50,
         })
     }
 
@@ -524,5 +640,83 @@ mod tests {
         let ev = models::Event::Resumed;
         assert!(!cache.update(&ev));
         assert!(cache.guilds.is_empty());
+    }
+
+    #[test]
+    fn message_edit_tracker_registers_and_evicts() {
+        let mut tracker = MessageEditTracker::new(2);
+        tracker.register_response(101, 201);
+        tracker.register_response(102, 202);
+
+        assert_eq!(tracker.get_response(101), Some(201));
+        assert_eq!(tracker.get_user_message(201), Some(101));
+        assert_eq!(tracker.get_response(102), Some(202));
+
+        // Overflow evicts oldest
+        tracker.register_response(103, 203);
+        assert_eq!(tracker.len(), 2);
+        assert_eq!(tracker.get_response(103), Some(203));
+
+        // Removal
+        assert_eq!(tracker.remove_user_message(103), Some(203));
+        assert_eq!(tracker.get_response(103), None);
+        assert_eq!(tracker.get_user_message(203), None);
+    }
+
+    #[test]
+    fn message_edit_tracked_update_captures_history() {
+        let mut cache = make_cache();
+        let msg_raw = r#"{
+            "id": "123",
+            "channel_id": "1",
+            "author": {"id": "1", "username": "u", "discriminator": "0", "global_name": null},
+            "content": "original",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "edited_timestamp": null,
+            "tts": false,
+            "mention_everyone": false,
+            "mentions": [],
+            "mention_roles": [],
+            "attachments": [],
+            "embeds": [],
+            "pinned": false,
+            "type": 0
+        }"#;
+
+        let create_ev = guild_event("MESSAGE_CREATE", msg_raw);
+        cache.update(&create_ev);
+        cache.edit_tracker.register_response(123, 999);
+
+        let edit_raw = r#"{
+            "id": "123",
+            "channel_id": "1",
+            "author": {"id": "1", "username": "u", "discriminator": "0", "global_name": null},
+            "content": "edited",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "edited_timestamp": "2024-01-01T00:01:00Z",
+            "tts": false,
+            "mention_everyone": false,
+            "mentions": [],
+            "mention_roles": [],
+            "attachments": [],
+            "embeds": [],
+            "pinned": false,
+            "type": 0
+        }"#;
+
+        let update_ev = guild_event("MESSAGE_UPDATE", edit_raw);
+        let (mutated, edit_info) = cache.update_tracked(&update_ev);
+        assert!(mutated);
+        let (prev, updated) = edit_info.expect("must capture edit");
+        assert_eq!(prev.as_ref().map(|m| m.content.as_str()), Some("original"));
+        assert_eq!(updated.content, "edited");
+        assert_eq!(cache.edit_tracker.get_response(123), Some(999));
+
+        // When message deleted, tracking is cleaned up
+        let del_raw = r#"{"id":"123","channel_id":"1"}"#;
+        let del_ev = guild_event("MESSAGE_DELETE", del_raw);
+        let (mutated, _) = cache.update_tracked(&del_ev);
+        assert!(mutated);
+        assert_eq!(cache.edit_tracker.get_response(123), None);
     }
 }
