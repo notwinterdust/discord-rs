@@ -203,7 +203,7 @@ impl EventWaiter {
         let (tx, rx): (Sender<Event>, Receiver<Event>) = mpsc::channel();
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(index) = state.history.iter().rposition(|event| predicate(event)) {
+            if let Some(index) = state.history.iter().rposition(&predicate) {
                 return Ok(state
                     .history
                     .remove(index)
