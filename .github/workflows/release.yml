@@ -91,6 +91,7 @@ jobs:
             discord-rust-util
             discord-rust-version
             discord-rust-voice
+            discord-rust-macros
             discord-rust-commands
             discord-rust-webhook
             discord-rust-data
